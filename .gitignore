@@ -1,0 +1,23 @@
+# Rust build output
+/target/
+/debug
+
+# Rust analyzer / editor
+.rust-analyzer/
+
+# Cargo backup and lock files
+Cargo.lock
+
+
+
+**/*.rs.bk
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# OS and editor files
+.DS_Store
+.idea/
+.vscode/

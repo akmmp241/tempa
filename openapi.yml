@@ -1,0 +1,208 @@
+openapi: 3.1.0
+info:
+  title: Tempa API
+  version: 0.1.0
+paths:
+  /api/projects:
+    post:
+      summary: Create project
+      responses:
+        '201':
+          description: Project created
+    get:
+      summary: List projects
+      responses:
+        '200':
+          description: Projects returned
+
+  /api/projects/{projectId}:
+    get:
+      summary: Get project
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Project returned
+        '404':
+          description: Project not found
+
+  /api/projects/{projectId}/environments:
+    post:
+      summary: Create environment
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '201':
+          description: Environment created
+        '404':
+          description: Project not found
+
+  /api/environments/{environmentId}:
+    get:
+      summary: Get environment
+      parameters:
+        - $ref: '#/components/parameters/EnvironmentId'
+      responses:
+        '200':
+          description: Environment returned
+        '404':
+          description: Environment not found
+
+  /api/environments/{environmentId}/revisions:
+    post:
+      summary: Create revision
+      parameters:
+        - $ref: '#/components/parameters/EnvironmentId'
+      responses:
+        '201':
+          description: Revision created
+        '404':
+          description: Environment not found
+    get:
+      summary: List revisions
+      parameters:
+        - $ref: '#/components/parameters/EnvironmentId'
+      responses:
+        '200':
+          description: Revisions returned
+        '404':
+          description: Environment not found
+
+  /api/revisions/{revisionId}:
+    get:
+      summary: Get revision
+      parameters:
+        - $ref: '#/components/parameters/RevisionId'
+      responses:
+        '200':
+          description: Revision returned
+        '404':
+          description: Revision not found
+
+  /api/environments/{environmentId}/deployments:
+    post:
+      summary: Create deployment
+      parameters:
+        - $ref: '#/components/parameters/EnvironmentId'
+      responses:
+        '201':
+          description: Deployment created
+        '404':
+          description: Environment not found
+    get:
+      summary: List deployments
+      parameters:
+        - $ref: '#/components/parameters/EnvironmentId'
+      responses:
+        '200':
+          description: Deployments returned
+        '404':
+          description: Environment not found
+
+  /api/deployments/{deploymentId}:
+    get:
+      summary: Get deployment
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+      responses:
+        '200':
+          description: Deployment returned
+        '404':
+          description: Deployment not found
+
+  /api/deployments/{deploymentId}/events:
+    get:
+      summary: List deployment events
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+      responses:
+        '200':
+          description: Deployment events returned
+        '404':
+          description: Deployment not found
+
+  /api/deployments/{deploymentId}/events/stream:
+    get:
+      summary: Stream deployment events
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+      responses:
+        '200':
+          description: Server-sent deployment event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '404':
+          description: Deployment not found
+
+  /api/deployments/{deploymentId}/cancel:
+    post:
+      summary: Cancel deployment
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+      responses:
+        '204':
+          description: Deployment cancelled
+        '404':
+          description: Deployment not found
+        '409':
+          description: Deployment cannot be cancelled
+
+  /api/deployments/{deploymentId}/rollback:
+    post:
+      summary: Roll back deployment
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+      responses:
+        '201':
+          description: Rollback deployment created
+        '404':
+          description: Deployment not found
+        '409':
+          description: Deployment cannot be rolled back
+
+  /api/environments/{environmentId}/resources:
+    get:
+      summary: List environment resources
+      parameters:
+        - $ref: '#/components/parameters/EnvironmentId'
+      responses:
+        '200':
+          description: Environment resources returned
+        '404':
+          description: Environment not found
+
+  /api/docker/networks:
+    get:
+      summary: List Docker networks
+      responses:
+        '200':
+          description: Docker networks returned
+
+components:
+  parameters:
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        type: string
+    EnvironmentId:
+      name: environmentId
+      in: path
+      required: true
+      schema:
+        type: string
+    RevisionId:
+      name: revisionId
+      in: path
+      required: true
+      schema:
+        type: string
+    DeploymentId:
+      name: deploymentId
+      in: path
+      required: true
+      schema:
+        type: string

@@ -1,186 +1,1071 @@
 openapi: 3.1.0
 info:
   title: Tempa API
-  version: 0.1.0
+  version: 0.2.0
+  summary: Compose-first deployment control plane for a single Docker server.
+  description: "HTTP API contract for Tempa v2 MVP.\n\nProduct rules reflected by this contract:\n  - Docker Compose is the deployment contract.\n  - Tempa targets one Docker host for the MVP.\n  - PostgreSQL stores Tempa-managed configuration and deployment history.\n  - Docker Engine remains the source of truth for runtime state.\n  - Deployments are immutable execution records.\n  - Deployments for the same application execute sequentially.\n  - External Docker resources are referenced, not owned.\n  - Secret values are write-only and never returned as plaintext.\n  - Destructive operations must be explicit.\n\nFields or behaviors marked with `x-tempa-design: proposed` are API design\ndecisions that are useful for the MVP but are not explicitly fixed by the\nsource product document.\n\nHost model in v0.2:\n  - Host is first-class master data.\n  - Every Project belongs to exactly one Host via project.hostId.\n  - Application target Host is inherited from its Project.\n  - Every Deployment\
+    \ snapshots hostId for historical correctness.\n  - Docker networks, volumes, and runtime operations are host-scoped.\n  - Project.hostId is immutable through normal project PATCH in the MVP.\n"
+servers:
+- url: /
+  description: Same-origin Tempa API
+security:
+- bearerAuth: []
+tags:
+- name: System
+- name: Hosts
+  description: Master data for Docker hosts targeted by projects.
+- name: Projects
+- name: Applications
+- name: Environment
+- name: Compose
+- name: Deployments
+- name: Runtime
+- name: Networks
+- name: Volumes
+- name: Host
 paths:
-  /api/projects:
-    post:
-      summary: Create project
-      responses:
-        '201':
-          description: Project created
+  /health:
     get:
-      summary: List projects
+      tags:
+      - System
+      operationId: getHealth
+      summary: Process liveness
+      security: []
       responses:
         '200':
-          description: Projects returned
-
-  /api/projects/{projectId}:
-    get:
-      summary: Get project
-      parameters:
-        - $ref: '#/components/parameters/ProjectId'
-      responses:
-        '200':
-          description: Project returned
-        '404':
-          description: Project not found
-
-  /api/projects/{projectId}/environments:
-    post:
-      summary: Create environment
-      parameters:
-        - $ref: '#/components/parameters/ProjectId'
-      responses:
-        '201':
-          description: Environment created
-        '404':
-          description: Project not found
-
-  /api/environments/{environmentId}:
-    get:
-      summary: Get environment
-      parameters:
-        - $ref: '#/components/parameters/EnvironmentId'
-      responses:
-        '200':
-          description: Environment returned
-        '404':
-          description: Environment not found
-
-  /api/environments/{environmentId}/revisions:
-    post:
-      summary: Create revision
-      parameters:
-        - $ref: '#/components/parameters/EnvironmentId'
-      responses:
-        '201':
-          description: Revision created
-        '404':
-          description: Environment not found
-    get:
-      summary: List revisions
-      parameters:
-        - $ref: '#/components/parameters/EnvironmentId'
-      responses:
-        '200':
-          description: Revisions returned
-        '404':
-          description: Environment not found
-
-  /api/revisions/{revisionId}:
-    get:
-      summary: Get revision
-      parameters:
-        - $ref: '#/components/parameters/RevisionId'
-      responses:
-        '200':
-          description: Revision returned
-        '404':
-          description: Revision not found
-
-  /api/environments/{environmentId}/deployments:
-    post:
-      summary: Create deployment
-      parameters:
-        - $ref: '#/components/parameters/EnvironmentId'
-      responses:
-        '201':
-          description: Deployment created
-        '404':
-          description: Environment not found
-    get:
-      summary: List deployments
-      parameters:
-        - $ref: '#/components/parameters/EnvironmentId'
-      responses:
-        '200':
-          description: Deployments returned
-        '404':
-          description: Environment not found
-
-  /api/deployments/{deploymentId}:
-    get:
-      summary: Get deployment
-      parameters:
-        - $ref: '#/components/parameters/DeploymentId'
-      responses:
-        '200':
-          description: Deployment returned
-        '404':
-          description: Deployment not found
-
-  /api/deployments/{deploymentId}/events:
-    get:
-      summary: List deployment events
-      parameters:
-        - $ref: '#/components/parameters/DeploymentId'
-      responses:
-        '200':
-          description: Deployment events returned
-        '404':
-          description: Deployment not found
-
-  /api/deployments/{deploymentId}/events/stream:
-    get:
-      summary: Stream deployment events
-      parameters:
-        - $ref: '#/components/parameters/DeploymentId'
-      responses:
-        '200':
-          description: Server-sent deployment event stream
+          description: Tempa process is alive.
           content:
-            text/event-stream:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /ready:
+    get:
+      tags:
+      - System
+      operationId: getReadiness
+      summary: Dependency readiness
+      security: []
+      responses:
+        '200':
+          description: Tempa dependencies are ready.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/hosts:
+    get:
+      tags:
+      - Hosts
+      operationId: listHosts
+      summary: List hosts
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 200
+      - name: status
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/HostStatus'
+      responses:
+        '200':
+          description: Paginated Host master data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HostListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags:
+      - Hosts
+      operationId: createHost
+      summary: Create host
+      description: Creates Host master data. For the MVP only local connection is supported. Creating a Host does not provision a Docker server.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateHostRequest'
+      responses:
+        '201':
+          description: Host created.
+          headers:
+            Location:
               schema:
                 type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HostResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/v1/hosts/{hostId}:
+    parameters:
+    - $ref: '#/components/parameters/HostId'
+    get:
+      tags:
+      - Hosts
+      operationId: getHost
+      summary: Get host
+      responses:
+        '200':
+          description: Host detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HostResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Deployment not found
-
-  /api/deployments/{deploymentId}/cancel:
-    post:
-      summary: Cancel deployment
-      parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags:
+      - Hosts
+      operationId: updateHost
+      summary: Update host metadata
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateHostRequest'
+      responses:
+        '200':
+          description: Host updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HostResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      tags:
+      - Hosts
+      operationId: deleteHost
+      summary: Delete unused host
+      description: Non-cascading. Return 409 while Projects still reference this Host. This operation never deletes Docker resources.
       responses:
         '204':
-          description: Deployment cancelled
+          description: Host deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Deployment not found
+          $ref: '#/components/responses/NotFound'
         '409':
-          description: Deployment cannot be cancelled
-
-  /api/deployments/{deploymentId}/rollback:
-    post:
-      summary: Roll back deployment
+          $ref: '#/components/responses/Conflict'
+  /api/v1/hosts/{hostId}/status:
+    parameters:
+    - $ref: '#/components/parameters/HostId'
+    get:
+      tags:
+      - Hosts
+      operationId: getHostStatus
+      summary: Observe host status
+      description: Observes actual Docker and Compose availability for the selected Host.
+      responses:
+        '200':
+          description: Current Host status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HostStatusResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/hosts/{hostId}/projects:
+    parameters:
+    - $ref: '#/components/parameters/HostId'
+    get:
+      tags:
+      - Hosts
+      - Projects
+      operationId: listHostProjects
+      summary: List projects assigned to host
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Projects assigned to Host.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/hosts/{hostId}/networks:
+    get:
+      tags:
+      - Host
+      - Networks
+      operationId: listHostNetworks
+      summary: List Docker networks on host
+      description: Read-only Docker network inventory for the selected Host. Resource ownership and identity are scoped by hostId.
+      parameters:
+      - name: ownership
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/ResourceOwnership'
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 200
+      responses:
+        '200':
+          description: Docker network inventory.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HostNetworkListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    parameters:
+    - $ref: '#/components/parameters/HostId'
+  /api/v1/hosts/{hostId}/volumes:
+    get:
+      tags:
+      - Host
+      - Volumes
+      operationId: listHostVolumes
+      summary: List Docker volumes on host
+      description: Read-only Docker volume inventory for the selected Host. Resource ownership and identity are scoped by hostId.
+      parameters:
+      - name: ownership
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/ResourceOwnership'
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 200
+      responses:
+        '200':
+          description: Docker volume inventory.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HostVolumeListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    parameters:
+    - $ref: '#/components/parameters/HostId'
+  /api/v1/projects:
+    get:
+      tags:
+      - Projects
+      operationId: listProjects
+      summary: List projects
+      x-tempa-design: proposed
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 200
+      responses:
+        '200':
+          description: Paginated project list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags:
+      - Projects
+      operationId: createProject
+      summary: Create project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProjectRequest'
       responses:
         '201':
-          description: Rollback deployment created
-        '404':
-          description: Deployment not found
+          description: Project created.
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '409':
-          description: Deployment cannot be rolled back
-
-  /api/environments/{environmentId}/resources:
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      description: Creates a Project assigned to exactly one Host. Project.hostId is the current deployment target inherited by all Applications under the Project.
+  /api/v1/projects/{projectId}:
+    parameters:
+    - $ref: '#/components/parameters/ProjectId'
     get:
-      summary: List environment resources
-      parameters:
-        - $ref: '#/components/parameters/EnvironmentId'
+      tags:
+      - Projects
+      operationId: getProject
+      summary: Get project
       responses:
         '200':
-          description: Environment resources returned
+          description: Project detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Environment not found
-
-  /api/docker/networks:
-    get:
-      summary: List Docker networks
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags:
+      - Projects
+      operationId: updateProject
+      summary: Update project metadata
+      x-tempa-design: proposed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProjectRequest'
       responses:
         '200':
-          description: Docker networks returned
+          description: Updated project.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      description: Updates Project metadata only. hostId cannot be changed here. Moving a Project between Hosts requires a future explicit migration workflow.
+    delete:
+      tags:
+      - Projects
+      operationId: deleteProject
+      summary: Delete project
+      description: 'Proposed MVP rule: project deletion is non-cascading. If applications
 
+        still exist under the project, return 409 instead of deleting them
+
+        implicitly.
+
+        '
+      x-tempa-design: proposed
+      responses:
+        '204':
+          description: Project deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/projects/{projectId}/applications:
+    parameters:
+    - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags:
+      - Applications
+      operationId: listProjectApplications
+      summary: List applications in project
+      x-tempa-design: proposed
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 200
+      responses:
+        '200':
+          description: Paginated application list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags:
+      - Applications
+      operationId: createApplication
+      summary: Create application
+      description: 'Creates Tempa-managed application configuration only. It does not
+
+        deploy the application. Deployment is always a separate explicit action.
+
+        '
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApplicationRequest'
+      responses:
+        '201':
+          description: Application created.
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/v1/applications/{applicationId}:
+    parameters:
+    - $ref: '#/components/parameters/ApplicationId'
+    get:
+      tags:
+      - Applications
+      operationId: getApplication
+      summary: Get application
+      responses:
+        '200':
+          description: Application detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags:
+      - Applications
+      operationId: updateApplication
+      summary: Update application metadata
+      description: Source settings use the dedicated /source endpoint.
+      x-tempa-design: proposed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateApplicationRequest'
+      responses:
+        '200':
+          description: Updated application.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      tags:
+      - Applications
+      operationId: deleteApplication
+      summary: Delete application configuration
+      description: 'This endpoint MUST NOT implicitly delete referenced Docker networks,
+
+        referenced volumes, or any unmanaged resource.
+
+
+        Proposed MVP safety rule: return 409 while active managed runtime
+
+        resources still exist. Runtime teardown should become a separate
+
+        explicit workflow if it is added later.
+
+        '
+      x-tempa-design: proposed
+      responses:
+        '204':
+          description: Application configuration deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/applications/{applicationId}/source:
+    parameters:
+    - $ref: '#/components/parameters/ApplicationId'
+    get:
+      tags:
+      - Applications
+      operationId: getApplicationSource
+      summary: Get Git source configuration
+      responses:
+        '200':
+          description: Git source configuration.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags:
+      - Applications
+      operationId: replaceApplicationSource
+      summary: Replace Git source configuration
+      description: 'Replaces repository URL, branch, Compose path, and optional opaque
+
+        credential reference.
+
+
+        Updating source configuration never mutates an existing Deployment.
+
+        A new deployment must be queued to apply the new configuration.
+
+        '
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SourceConfigInput'
+      responses:
+        '200':
+          description: Source configuration updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/v1/applications/{applicationId}/environment:
+    parameters:
+    - $ref: '#/components/parameters/ApplicationId'
+    get:
+      tags:
+      - Environment
+      operationId: listApplicationEnvironment
+      summary: List environment variable metadata
+      description: 'Values are intentionally never returned. The response exposes only
+
+        variable names and metadata.
+
+        '
+      responses:
+        '200':
+          description: Environment variable metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/applications/{applicationId}/environment/{key}:
+    parameters:
+    - $ref: '#/components/parameters/ApplicationId'
+    - $ref: '#/components/parameters/EnvironmentKey'
+    put:
+      tags:
+      - Environment
+      operationId: putEnvironmentVariable
+      summary: Set or replace environment variable
+      description: The value is write-only and never echoed back.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutEnvironmentVariableRequest'
+      responses:
+        '200':
+          description: Variable replaced.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentVariableResponse'
+        '201':
+          description: Variable created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentVariableResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      tags:
+      - Environment
+      operationId: deleteEnvironmentVariable
+      summary: Delete environment variable
+      responses:
+        '204':
+          description: Variable deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/applications/{applicationId}/compose:
+    parameters:
+    - $ref: '#/components/parameters/ApplicationId'
+    get:
+      tags:
+      - Compose
+      operationId: getLatestComposeDiscovery
+      summary: Get latest discovered Compose model
+      description: 'Returns the last Compose discovery snapshot known by Tempa. This is not
+
+        a replacement deployment format; Docker Compose remains authoritative.
+
+        '
+      responses:
+        '200':
+          description: Latest Compose discovery.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComposeDiscoveryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/applications/{applicationId}/compose/discover:
+    parameters:
+    - $ref: '#/components/parameters/ApplicationId'
+    post:
+      tags:
+      - Compose
+      operationId: discoverCompose
+      summary: Discover Compose configuration
+      description: "Reads the configured repository and Compose file and extracts:\n  - services\n  - build context\n  - image\n  - service dependencies\n  - ports\n  - health checks\n  - volumes\n  - networks\n  - environment declarations\n"
+      responses:
+        '200':
+          description: Discovery completed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComposeDiscoveryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/v1/applications/{applicationId}/compose/validate:
+    parameters:
+    - $ref: '#/components/parameters/ApplicationId'
+    post:
+      tags:
+      - Compose
+      operationId: validateCompose
+      summary: Validate Compose configuration
+      description: 'Validation must delegate to Docker Compose itself, equivalent in intent
+
+        to `docker compose config`.
+
+
+        A Compose configuration that is invalid produces HTTP 200 with
+
+        `valid=false`; the validation operation itself succeeded. Infrastructure
+
+        failures use 5xx responses.
+
+        '
+      responses:
+        '200':
+          description: Compose validation result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComposeValidationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/applications/{applicationId}/deployments:
+    parameters:
+    - $ref: '#/components/parameters/ApplicationId'
+    get:
+      tags:
+      - Deployments
+      operationId: listApplicationDeployments
+      summary: List deployment history
+      x-tempa-design: proposed
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      - name: status
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/DeploymentStatus'
+      responses:
+        '200':
+          description: Deployment history ordered newest first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags:
+      - Deployments
+      operationId: createDeployment
+      summary: Queue deployment
+      description: "Creates an immutable Deployment record and enqueues it in PostgreSQL.\n\nThe worker then performs the lifecycle:\n  1. prepare deployment\n  2. fetch/update repository\n  3. resolve commit SHA\n  4. locate Compose file\n  5. generate deployment environment\n  6. validate Compose\n  7. pull/build images\n  8. docker compose up -d\n  9. verify service state/health\n  10. mark deployment succeeded or failed\n\nDeployments for the same application must execute sequentially.\n\nWhen a Deployment is queued, Tempa resolves Application -> Project -> Host and\nstores that Host id in Deployment.hostId as an immutable execution snapshot.\n"
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: Deployment queued.
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/v1/deployments/{deploymentId}:
+    parameters:
+    - $ref: '#/components/parameters/DeploymentId'
+    get:
+      tags:
+      - Deployments
+      operationId: getDeployment
+      summary: Get deployment
+      responses:
+        '200':
+          description: Immutable deployment execution record.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/deployments/{deploymentId}/cancel:
+    parameters:
+    - $ref: '#/components/parameters/DeploymentId'
+    post:
+      tags:
+      - Deployments
+      operationId: cancelDeployment
+      summary: Request deployment cancellation
+      description: 'Proposed cooperative cancellation behavior. Queued deployments can be
+
+        cancelled immediately. Active deployments should stop at a safe worker
+
+        boundary. Terminal deployments return 409.
+
+        '
+      x-tempa-design: proposed
+      responses:
+        '202':
+          description: Cancellation request accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/deployments/{deploymentId}/logs:
+    parameters:
+    - $ref: '#/components/parameters/DeploymentId'
+    get:
+      tags:
+      - Deployments
+      operationId: getDeploymentLogs
+      summary: Read deployment logs
+      description: 'Deployment logs are managed history. Secret redaction MUST happen
+
+        before persistence and before returning log content.
+
+        '
+      x-tempa-design: proposed
+      parameters:
+      - $ref: '#/components/parameters/LogCursor'
+      - $ref: '#/components/parameters/LogLimit'
+      responses:
+        '200':
+          description: Deployment log page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentLogResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/applications/{applicationId}/runtime:
+    parameters:
+    - $ref: '#/components/parameters/ApplicationId'
+    get:
+      tags:
+      - Runtime
+      operationId: getApplicationRuntime
+      summary: Get actual runtime state
+      description: Resolves Application -> Project -> Host, then reads actual state from that Host's Docker Engine. PostgreSQL is not the runtime source of truth.
+      responses:
+        '200':
+          description: Current runtime state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationRuntimeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/applications/{applicationId}/services/{serviceName}/logs:
+    parameters:
+    - $ref: '#/components/parameters/ApplicationId'
+    - $ref: '#/components/parameters/ServiceName'
+    get:
+      tags:
+      - Runtime
+      operationId: getServiceLogs
+      summary: Read runtime logs for a service
+      description: Runtime logs are read from Docker Engine and need not be persisted.
+      parameters:
+      - $ref: '#/components/parameters/RuntimeSince'
+      - $ref: '#/components/parameters/Tail'
+      responses:
+        '200':
+          description: Runtime service logs.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeLogResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/applications/{applicationId}/containers/{containerId}/logs:
+    parameters:
+    - $ref: '#/components/parameters/ApplicationId'
+    - $ref: '#/components/parameters/ContainerId'
+    get:
+      tags:
+      - Runtime
+      operationId: getContainerLogs
+      summary: Read runtime logs for an application container
+      description: 'The container MUST be verified as associated with the requested
+
+        application before logs are returned.
+
+        '
+      parameters:
+      - $ref: '#/components/parameters/RuntimeSince'
+      - $ref: '#/components/parameters/Tail'
+      responses:
+        '200':
+          description: Runtime container logs.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeLogResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/applications/{applicationId}/networks:
+    parameters:
+    - $ref: '#/components/parameters/ApplicationId'
+    get:
+      tags:
+      - Networks
+      operationId: listApplicationNetworks
+      summary: List application networks
+      description: 'Combines Compose network declarations, explicit Tempa external-network
+
+        bindings, and actual Docker network attachments.
+
+        '
+      responses:
+        '200':
+          description: Application network configuration and runtime state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationNetworkListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/applications/{applicationId}/networks/{networkKey}:
+    parameters:
+    - $ref: '#/components/parameters/ApplicationId'
+    - $ref: '#/components/parameters/NetworkKey'
+    put:
+      tags:
+      - Networks
+      operationId: bindExternalNetwork
+      summary: Bind Compose external network to host network
+      description: 'Stores an explicit host-network selection for an external Compose
+
+        network. The host network is referenced, not owned, by Tempa.
+
+        '
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExternalNetworkBindingRequest'
+      responses:
+        '200':
+          description: Network binding updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationNetworkResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags:
+      - Networks
+      operationId: clearExternalNetworkBinding
+      summary: Clear explicit host-network binding
+      description: Removes only Tempa's reference. The Docker network is never deleted.
+      responses:
+        '204':
+          description: Binding removed.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/applications/{applicationId}/volumes:
+    parameters:
+    - $ref: '#/components/parameters/ApplicationId'
+    get:
+      tags:
+      - Volumes
+      operationId: listApplicationVolumes
+      summary: List application volumes
+      description: 'Read-only MVP view combining Compose definitions and actual Docker
+
+        attachments. Tempa is not a volume file manager or backup system.
+
+        '
+      responses:
+        '200':
+          description: Application volumes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationVolumeListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: 'x-tempa-design: proposed.
+
+        The product requires authenticated dashboard access but does not define
+
+        the concrete authentication mechanism.
+
+        '
   parameters:
     ProjectId:
       name: projectId
@@ -188,21 +1073,1561 @@ components:
       required: true
       schema:
         type: string
-    EnvironmentId:
-      name: environmentId
+        format: uuid
+    ApplicationId:
+      name: applicationId
       in: path
       required: true
       schema:
         type: string
-    RevisionId:
-      name: revisionId
-      in: path
-      required: true
-      schema:
-        type: string
+        format: uuid
     DeploymentId:
       name: deploymentId
       in: path
       required: true
       schema:
         type: string
+        format: uuid
+    EnvironmentKey:
+      name: key
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: ^[A-Za-z_][A-Za-z0-9_]*$
+        maxLength: 255
+    NetworkKey:
+      name: networkKey
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
+    ServiceName:
+      name: serviceName
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
+    ContainerId:
+      name: containerId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 12
+        maxLength: 128
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque cursor pagination token.
+      schema:
+        type: string
+        maxLength: 2048
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 25
+    LogCursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+        maxLength: 2048
+    LogLimit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 1000
+        default: 200
+    RuntimeSince:
+      name: since
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+    Tail:
+      name: tail
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 5000
+        default: 200
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: 'x-tempa-design: proposed.
+
+        Prevents accidental duplicate deployment enqueue requests.
+
+        '
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 255
+    HostId:
+      name: hostId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    BadRequest:
+      description: Malformed request.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: Authentication is required or invalid.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: Resource not found.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: Request conflicts with current resource state.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    ValidationError:
+      description: Semantic validation failed.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    ServiceUnavailable:
+      description: Required dependency is unavailable.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    HealthResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - status
+      properties:
+        status:
+          type: string
+          const: ok
+    ReadinessResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - status
+      - checks
+      properties:
+        status:
+          type: string
+          enum:
+          - ready
+        checks:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/DependencyCheck'
+    DependencyCheck:
+      type: object
+      additionalProperties: false
+      required:
+      - status
+      properties:
+        status:
+          type: string
+          enum:
+          - ok
+          - error
+        message:
+          type:
+          - string
+          - 'null'
+    Problem:
+      type: object
+      additionalProperties: false
+      required:
+      - title
+      - status
+      - code
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          default: about:blank
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        code:
+          type: string
+          description: Stable machine-readable error code.
+        detail:
+          type:
+          - string
+          - 'null'
+        instance:
+          type:
+          - string
+          - 'null'
+          format: uri-reference
+        requestId:
+          type:
+          - string
+          - 'null'
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldError'
+    FieldError:
+      type: object
+      additionalProperties: false
+      required:
+      - code
+      - message
+      properties:
+        field:
+          type:
+          - string
+          - 'null'
+        code:
+          type: string
+        message:
+          type: string
+    PageMeta:
+      type: object
+      additionalProperties: false
+      required:
+      - nextCursor
+      - hasMore
+      properties:
+        nextCursor:
+          type:
+          - string
+          - 'null'
+        hasMore:
+          type: boolean
+    Project:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - hostId
+      - name
+      - description
+      - applicationCount
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type:
+          - string
+          - 'null'
+          maxLength: 2000
+          x-tempa-design: proposed
+        applicationCount:
+          type: integer
+          minimum: 0
+          x-tempa-design: proposed
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        hostId:
+          type: string
+          format: uuid
+          description: Current target Host inherited by all Applications in this Project.
+    ProjectResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/Project'
+    ProjectListResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - data
+      - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Project'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+    CreateProjectRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - hostId
+      - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type:
+          - string
+          - 'null'
+          maxLength: 2000
+          x-tempa-design: proposed
+        hostId:
+          type: string
+          format: uuid
+    UpdateProjectRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type:
+          - string
+          - 'null'
+          maxLength: 2000
+          x-tempa-design: proposed
+      description: Updates mutable Project metadata only. hostId is intentionally absent. Moving a Project between Hosts requires an explicit future migration workflow.
+      x-tempa-design: proposed
+    SourceConfig:
+      type: object
+      additionalProperties: false
+      required:
+      - repositoryUrl
+      - branch
+      - composePath
+      - credentialId
+      properties:
+        repositoryUrl:
+          type: string
+          minLength: 1
+          maxLength: 2048
+          examples:
+          - git@github.com:example/portfolio.git
+        branch:
+          type: string
+          minLength: 1
+          maxLength: 255
+          examples:
+          - main
+        composePath:
+          type: string
+          minLength: 1
+          maxLength: 1024
+          description: 'Repository-relative Compose path. The backend MUST reject path
+
+            traversal and paths escaping the checkout working tree.
+
+            '
+          examples:
+          - docker-compose.yml
+          - deploy/compose.yml
+        credentialId:
+          type:
+          - string
+          - 'null'
+          format: uuid
+          description: 'Optional opaque reference to repository credentials. Credential CRUD
+
+            is intentionally outside this contract because the source document
+
+            does not define its lifecycle.
+
+            '
+    SourceConfigInput:
+      allOf:
+      - $ref: '#/components/schemas/SourceConfig'
+    SourceResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/SourceConfig'
+    Application:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - projectId
+      - name
+      - slug
+      - source
+      - latestDeployment
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: ^[a-z0-9]+(?:-[a-z0-9]+)*$
+        source:
+          $ref: '#/components/schemas/SourceConfig'
+        latestDeployment:
+          oneOf:
+          - $ref: '#/components/schemas/DeploymentSummary'
+          - type: 'null'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      description: Application belongs to a Project and does not duplicate hostId. Current Host is resolved through Application.projectId -> Project.hostId.
+    ApplicationResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/Application'
+    ApplicationListResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - data
+      - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Application'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+    CreateApplicationRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      - slug
+      - source
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: ^[a-z0-9]+(?:-[a-z0-9]+)*$
+        source:
+          $ref: '#/components/schemas/SourceConfigInput'
+    UpdateApplicationRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: ^[a-z0-9]+(?:-[a-z0-9]+)*$
+    EnvironmentVariable:
+      type: object
+      additionalProperties: false
+      required:
+      - key
+      - secret
+      - configured
+      - updatedAt
+      properties:
+        key:
+          type: string
+          pattern: ^[A-Za-z_][A-Za-z0-9_]*$
+          maxLength: 255
+        secret:
+          type: boolean
+        configured:
+          type: boolean
+          const: true
+        updatedAt:
+          type: string
+          format: date-time
+    PutEnvironmentVariableRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - value
+      properties:
+        value:
+          type: string
+          maxLength: 65535
+          writeOnly: true
+        secret:
+          type: boolean
+          default: true
+    EnvironmentVariableResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/EnvironmentVariable'
+    EnvironmentListResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/EnvironmentVariable'
+    ComposeDiscovery:
+      type: object
+      additionalProperties: false
+      required:
+      - composePath
+      - commitSha
+      - discoveredAt
+      - services
+      - networks
+      - volumes
+      properties:
+        composePath:
+          type: string
+        commitSha:
+          type: string
+          minLength: 7
+          maxLength: 64
+        discoveredAt:
+          type: string
+          format: date-time
+        services:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComposeService'
+        networks:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComposeNetwork'
+        volumes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComposeVolume'
+    ComposeDiscoveryResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/ComposeDiscovery'
+    ComposeService:
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      - image
+      - build
+      - dependsOn
+      - ports
+      - healthcheck
+      - networks
+      - volumes
+      - environmentKeys
+      properties:
+        name:
+          type: string
+        image:
+          type:
+          - string
+          - 'null'
+        build:
+          oneOf:
+          - $ref: '#/components/schemas/ComposeBuild'
+          - type: 'null'
+        dependsOn:
+          type: array
+          items:
+            type: string
+        ports:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComposePort'
+        healthcheck:
+          oneOf:
+          - $ref: '#/components/schemas/ComposeHealthcheck'
+          - type: 'null'
+        networks:
+          type: array
+          items:
+            type: string
+        volumes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComposeServiceVolume'
+        environmentKeys:
+          type: array
+          items:
+            type: string
+    ComposeBuild:
+      type: object
+      additionalProperties: false
+      required:
+      - context
+      - dockerfile
+      properties:
+        context:
+          type: string
+        dockerfile:
+          type:
+          - string
+          - 'null'
+    ComposePort:
+      type: object
+      additionalProperties: false
+      required:
+      - target
+      - published
+      - protocol
+      - hostIp
+      properties:
+        target:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        published:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+          maximum: 65535
+        protocol:
+          type: string
+          enum:
+          - tcp
+          - udp
+          - sctp
+        hostIp:
+          type:
+          - string
+          - 'null'
+    ComposeHealthcheck:
+      type: object
+      additionalProperties: false
+      properties:
+        test:
+          type: array
+          items:
+            type: string
+        interval:
+          type:
+          - string
+          - 'null'
+        timeout:
+          type:
+          - string
+          - 'null'
+        retries:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+        startPeriod:
+          type:
+          - string
+          - 'null'
+    ComposeServiceVolume:
+      type: object
+      additionalProperties: false
+      required:
+      - source
+      - target
+      - type
+      - readOnly
+      properties:
+        source:
+          type:
+          - string
+          - 'null'
+        target:
+          type: string
+        type:
+          type: string
+          examples:
+          - volume
+          - bind
+          - tmpfs
+        readOnly:
+          type: boolean
+    ComposeNetwork:
+      type: object
+      additionalProperties: false
+      required:
+      - key
+      - external
+      - externalName
+      properties:
+        key:
+          type: string
+        external:
+          type: boolean
+        externalName:
+          type:
+          - string
+          - 'null'
+    ComposeVolume:
+      type: object
+      additionalProperties: false
+      required:
+      - key
+      - external
+      - externalName
+      properties:
+        key:
+          type: string
+        external:
+          type: boolean
+        externalName:
+          type:
+          - string
+          - 'null'
+    ComposeValidationResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/ComposeValidationResult'
+    ComposeValidationResult:
+      type: object
+      additionalProperties: false
+      required:
+      - valid
+      - errors
+      - warnings
+      - validatedAt
+      properties:
+        valid:
+          type: boolean
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComposeDiagnostic'
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComposeDiagnostic'
+        validatedAt:
+          type: string
+          format: date-time
+    ComposeDiagnostic:
+      type: object
+      additionalProperties: false
+      required:
+      - code
+      - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        path:
+          type:
+          - string
+          - 'null'
+    DeploymentStatus:
+      type: string
+      enum:
+      - queued
+      - preparing
+      - building
+      - deploying
+      - verifying
+      - succeeded
+      - failed
+      - cancelled
+    DeploymentSummary:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - hostId
+      - status
+      - commitSha
+      - createdAt
+      - finishedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/DeploymentStatus'
+        commitSha:
+          type:
+          - string
+          - 'null'
+        createdAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        hostId:
+          type: string
+          format: uuid
+    Deployment:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - applicationId
+      - hostId
+      - branch
+      - commitSha
+      - trigger
+      - status
+      - errorSummary
+      - createdAt
+      - startedAt
+      - finishedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        applicationId:
+          type: string
+          format: uuid
+        branch:
+          type: string
+        commitSha:
+          type:
+          - string
+          - 'null'
+        trigger:
+          type: string
+          description: Stored deployment trigger. Kept open because the source does not define a closed enum.
+          examples:
+          - api
+        status:
+          $ref: '#/components/schemas/DeploymentStatus'
+        errorSummary:
+          type:
+          - string
+          - 'null'
+          maxLength: 8000
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        finishedAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        hostId:
+          type: string
+          format: uuid
+          description: Immutable Host snapshot captured when this Deployment is queued.
+    DeploymentResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/Deployment'
+    DeploymentListResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - data
+      - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Deployment'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+    DeploymentLogEntry:
+      type: object
+      additionalProperties: false
+      required:
+      - cursor
+      - timestamp
+      - stream
+      - message
+      properties:
+        cursor:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        stream:
+          type: string
+          examples:
+          - system
+          - git
+          - build
+          - compose
+          - verify
+        level:
+          type:
+          - string
+          - 'null'
+          enum:
+          - trace
+          - debug
+          - info
+          - warn
+          - error
+          - null
+        message:
+          type: string
+    DeploymentLogMeta:
+      type: object
+      additionalProperties: false
+      required:
+      - nextCursor
+      - hasMore
+      - complete
+      properties:
+        nextCursor:
+          type:
+          - string
+          - 'null'
+        hasMore:
+          type: boolean
+        complete:
+          type: boolean
+    DeploymentLogResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - data
+      - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeploymentLogEntry'
+        meta:
+          $ref: '#/components/schemas/DeploymentLogMeta'
+    ResourceOwnership:
+      type: string
+      enum:
+      - managed
+      - referenced
+      - unmanaged
+    ApplicationRuntime:
+      type: object
+      additionalProperties: false
+      required:
+      - hostId
+      - observedAt
+      - composeProject
+      - state
+      - services
+      - drift
+      properties:
+        observedAt:
+          type: string
+          format: date-time
+        composeProject:
+          type:
+          - string
+          - 'null'
+        state:
+          type: string
+          enum:
+          - not_deployed
+          - running
+          - degraded
+          - stopped
+          - unknown
+          x-tempa-design: proposed
+        services:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuntimeService'
+        drift:
+          $ref: '#/components/schemas/RuntimeDrift'
+        hostId:
+          type: string
+          format: uuid
+          description: Host resolved from Application -> Project -> Host.
+    ApplicationRuntimeResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/ApplicationRuntime'
+    RuntimeDrift:
+      type: object
+      additionalProperties: false
+      required:
+      - detected
+      - reasons
+      properties:
+        detected:
+          type: boolean
+        reasons:
+          type: array
+          items:
+            type: string
+          x-tempa-design: proposed
+    RuntimeService:
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      - state
+      - health
+      - containers
+      properties:
+        name:
+          type: string
+        state:
+          type: string
+        health:
+          type:
+          - string
+          - 'null'
+        containers:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuntimeContainer'
+    RuntimeContainer:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - name
+      - image
+      - state
+      - health
+      - startedAt
+      - ports
+      - networks
+      - volumes
+      - ownership
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        image:
+          type: string
+        state:
+          type: string
+        health:
+          type:
+          - string
+          - 'null'
+        startedAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        ports:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuntimePort'
+        networks:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuntimeNetworkAttachment'
+        volumes:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuntimeVolumeAttachment'
+        ownership:
+          $ref: '#/components/schemas/ResourceOwnership'
+    RuntimePort:
+      type: object
+      additionalProperties: false
+      required:
+      - containerPort
+      - protocol
+      - hostIp
+      - hostPort
+      properties:
+        containerPort:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        protocol:
+          type: string
+        hostIp:
+          type:
+          - string
+          - 'null'
+        hostPort:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+          maximum: 65535
+    RuntimeNetworkAttachment:
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      - networkId
+      - ipAddress
+      - ownership
+      properties:
+        name:
+          type: string
+        networkId:
+          type: string
+        ipAddress:
+          type:
+          - string
+          - 'null'
+        ownership:
+          $ref: '#/components/schemas/ResourceOwnership'
+    RuntimeVolumeAttachment:
+      type: object
+      additionalProperties: false
+      required:
+      - source
+      - destination
+      - mode
+      - ownership
+      properties:
+        source:
+          type: string
+        destination:
+          type: string
+        mode:
+          type: string
+        ownership:
+          oneOf:
+          - $ref: '#/components/schemas/ResourceOwnership'
+          - type: 'null'
+    RuntimeLogLine:
+      type: object
+      additionalProperties: false
+      required:
+      - timestamp
+      - stream
+      - message
+      properties:
+        timestamp:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        stream:
+          type: string
+          enum:
+          - stdout
+          - stderr
+        message:
+          type: string
+    RuntimeLogResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - data
+      - observedAt
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuntimeLogLine'
+        observedAt:
+          type: string
+          format: date-time
+    HostResourceReference:
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      - ownership
+      properties:
+        name:
+          type: string
+        ownership:
+          $ref: '#/components/schemas/ResourceOwnership'
+    ApplicationNetwork:
+      type: object
+      additionalProperties: false
+      required:
+      - key
+      - external
+      - configuredHostNetwork
+      - actualNetworks
+      properties:
+        key:
+          type: string
+        external:
+          type: boolean
+        configuredHostNetwork:
+          oneOf:
+          - $ref: '#/components/schemas/HostResourceReference'
+          - type: 'null'
+        actualNetworks:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuntimeNetworkAttachment'
+    ApplicationNetworkResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/ApplicationNetwork'
+    ApplicationNetworkListResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApplicationNetwork'
+    ExternalNetworkBindingRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - hostNetworkName
+      properties:
+        hostNetworkName:
+          type: string
+          minLength: 1
+          maxLength: 255
+    ApplicationVolume:
+      type: object
+      additionalProperties: false
+      required:
+      - key
+      - external
+      - externalName
+      - ownership
+      - actualAttachments
+      properties:
+        key:
+          type: string
+        external:
+          type: boolean
+        externalName:
+          type:
+          - string
+          - 'null'
+        ownership:
+          oneOf:
+          - $ref: '#/components/schemas/ResourceOwnership'
+          - type: 'null'
+        actualAttachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuntimeVolumeAttachment'
+    ApplicationVolumeListResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApplicationVolume'
+    HostNetwork:
+      type: object
+      additionalProperties: false
+      required:
+      - hostId
+      - id
+      - name
+      - driver
+      - scope
+      - internal
+      - attachable
+      - ownership
+      - labels
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        driver:
+          type: string
+        scope:
+          type: string
+        internal:
+          type: boolean
+        attachable:
+          type: boolean
+        ownership:
+          $ref: '#/components/schemas/ResourceOwnership'
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        hostId:
+          type: string
+          format: uuid
+    HostNetworkListResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/HostNetwork'
+    HostVolume:
+      type: object
+      additionalProperties: false
+      required:
+      - hostId
+      - name
+      - driver
+      - mountpoint
+      - ownership
+      - labels
+      properties:
+        name:
+          type: string
+        driver:
+          type: string
+        mountpoint:
+          type:
+          - string
+          - 'null'
+        ownership:
+          $ref: '#/components/schemas/ResourceOwnership'
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        hostId:
+          type: string
+          format: uuid
+    HostVolumeListResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/HostVolume'
+    HostConnectionType:
+      type: string
+      enum:
+      - local
+      description: MVP connection type. Remote host transports are intentionally deferred.
+      x-tempa-design: proposed
+    HostStatus:
+      type: string
+      enum:
+      - unknown
+      - online
+      - offline
+      x-tempa-design: proposed
+    Host:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - name
+      - slug
+      - connectionType
+      - status
+      - lastSeenAt
+      - projectCount
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: ^[a-z0-9]+(?:-[a-z0-9]+)*$
+        connectionType:
+          $ref: '#/components/schemas/HostConnectionType'
+        status:
+          $ref: '#/components/schemas/HostStatus'
+        lastSeenAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        projectCount:
+          type: integer
+          minimum: 0
+          x-tempa-design: proposed
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    HostResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/Host'
+    HostListResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - data
+      - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Host'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+    CreateHostRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      - slug
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: ^[a-z0-9]+(?:-[a-z0-9]+)*$
+        connectionType:
+          $ref: '#/components/schemas/HostConnectionType'
+    UpdateHostRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: ^[a-z0-9]+(?:-[a-z0-9]+)*$
+    HostStatusDetail:
+      type: object
+      additionalProperties: false
+      required:
+      - hostId
+      - status
+      - observedAt
+      - dockerAvailable
+      - composeAvailable
+      - dockerServerVersion
+      - composeVersion
+      properties:
+        hostId:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/HostStatus'
+        observedAt:
+          type: string
+          format: date-time
+        dockerAvailable:
+          type: boolean
+        composeAvailable:
+          type: boolean
+        dockerServerVersion:
+          type:
+          - string
+          - 'null'
+        composeVersion:
+          type:
+          - string
+          - 'null'
+      x-tempa-design: proposed
+    HostStatusResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/HostStatusDetail'

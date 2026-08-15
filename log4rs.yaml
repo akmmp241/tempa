@@ -8,7 +8,7 @@ appenders:
     path: logs/application.log
     append: true
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S%.3f %:z)} {l:<5} [{T}] {t} — {m}{n}"
+      kind: json
     policy:
       kind: compound
       trigger:

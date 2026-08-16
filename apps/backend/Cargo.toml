@@ -16,6 +16,10 @@ tokio = { workspace = true }
 tower = { workspace = true }
 log = { workspace = true }
 log4rs = { workspace = true }
+async-trait.workspace = true
+validator.workspace = true
+domain.workspace = true
+chrono.workspace = true
 
 [dev-dependencies]
 axum-test = { workspace = true }

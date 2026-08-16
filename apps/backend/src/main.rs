@@ -1,32 +1,23 @@
-// pub mod bootstrap;
-
+pub mod application;
 pub mod bootstrap;
+pub mod config;
 pub mod http;
+pub mod infra;
+pub mod ports;
 
 use crate::bootstrap::Bootstrap;
 use dotenvy::dotenv;
-use sqlx::postgres::PgPoolOptions;
-use std::env;
-use tokio::fs;
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenv().ok();
 
-    fs::create_dir_all("logs").await?;
-    log4rs::init_file("log4rs.yaml", Default::default())?;
+    let config = config::Config::from_env()?;
+    let db_pool = config::db_pool(&config.database.url).await;
+    config::init_logger().await?;
 
-    let database_url = env::var("DATABASE_URL")?;
-    let pool = PgPoolOptions::new()
-        .max_connections(5)
-        .connect(database_url.as_str())
-        .await?;
+    sqlx::migrate!("../../migrations").run(&db_pool).await?;
 
-    sqlx::migrate!("../../migrations").run(&pool).await?;
-
-    let bootstrap = Bootstrap::new();
-
-    bootstrap.run().await;
+    Bootstrap::new(config).await.run().await;
 
     Ok(())
 }

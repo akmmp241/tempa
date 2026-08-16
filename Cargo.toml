@@ -31,4 +31,5 @@ uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 async-trait = "0.1"
 validator = { version = "0.21", features = ["derive"] }
+thiserror = "2.0.20"
 domain = { path = "crates/domain" }

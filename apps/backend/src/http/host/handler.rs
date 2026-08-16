@@ -15,7 +15,12 @@ pub async fn create_host(
     State(state): State<AppState>,
     Json(payload): Json<CreateHostRequest>,
 ) -> Result<Json<ApiResponse<CreateHostResponse>>, HttpError> {
-    todo!()
+    let res = state.host_service.save(payload).await?;
+
+    Ok(Json(ApiResponse::success(
+        "Host created successfully".to_string(),
+        res,
+    )))
 }
 
 pub async fn get_hosts(

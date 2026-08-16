@@ -1,4 +1,4 @@
-use domain::host::HostStatus;
+use domain::host::{HostStatus, HostType};
 use serde::{Deserialize, Serialize};
 use sqlx::types::{Uuid, chrono};
 use validator::{Validate, ValidationError};
@@ -20,15 +20,30 @@ pub struct CreateHostRequest {
         length(max = 20),
         custom(function = "validate_host_type", message = "invalid host type")
     )]
+    #[serde(rename = "type")]
     pub _type: String,
     pub docker_endpoint: String,
+}
+
+impl From<CreateHostRequest> for domain::host::Host {
+    fn from(req: CreateHostRequest) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            name: req.name,
+            _type: req._type.into(),
+            docker_endpoint: req.docker_endpoint,
+            status: HostStatus::Unknown,
+            last_seen_at: None,
+            created_at: chrono::Utc::now().naive_utc(),
+        }
+    }
 }
 
 #[derive(Serialize, Debug)]
 pub struct HostResponse {
     pub id: Uuid,
     pub name: String,
-    pub _type: String,
+    pub _type: HostType,
     pub docker_endpoint: String,
     pub status: HostStatus,
     pub project_count: u16,
@@ -36,9 +51,21 @@ pub struct HostResponse {
     pub created_at: chrono::NaiveDateTime,
 }
 
-#[derive(Serialize, Debug)]
-pub struct CreateHostResponse {
-    pub data: HostResponse,
+pub type CreateHostResponse = HostResponse;
+
+impl Into<CreateHostResponse> for domain::host::Host {
+    fn into(self) -> CreateHostResponse {
+        CreateHostResponse {
+            id: self.id,
+            name: self.name,
+            _type: self._type,
+            docker_endpoint: self.docker_endpoint,
+            status: self.status,
+            project_count: 0,
+            last_seen_at: self.last_seen_at,
+            created_at: self.created_at,
+        }
+    }
 }
 
 #[derive(Deserialize, Debug)]

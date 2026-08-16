@@ -1,11 +1,14 @@
+use crate::http::error::HttpError;
 use crate::http::host::dto::{
     CreateHostRequest, CreateHostResponse, GetAllHostRequest, GetAllHostResponse,
     GetHostProjectsRequest, GetHostProjectsResponse, ObserveStatusResponse,
     UpdateHostMetadataRequest, UpdateHostMetadataResponse,
 };
 use crate::ports::host_repository::HostRepository;
+use domain::host::Host;
 use sqlx::types::uuid;
 use std::sync::Arc;
+use validator::Validate;
 
 #[derive(Clone)]
 pub struct HostService {
@@ -17,8 +20,22 @@ impl HostService {
         Self { host }
     }
 
-    pub async fn save(&self, req: &CreateHostRequest) -> anyhow::Result<CreateHostResponse> {
-        todo!()
+    pub async fn save(&self, req: CreateHostRequest) -> Result<CreateHostResponse, HttpError> {
+        req.validate()?;
+
+        let host = Host::from(req);
+
+        self.host
+            .get_by("name", &host.id.to_string())
+            .await?
+            .is_some()
+            .then(|| HttpError::BadRequest("duplicate name".to_string()));
+
+        self.host.insert(&host).await?;
+
+        // TODO: mekanisme buat ngecek
+
+        Ok(host.into())
     }
 
     pub async fn get_all(&self, req: &GetAllHostRequest) -> anyhow::Result<GetAllHostResponse> {

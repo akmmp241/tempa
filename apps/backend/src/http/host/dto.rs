@@ -43,6 +43,7 @@ impl From<CreateHostRequest> for domain::host::Host {
 pub struct HostResponse {
     pub id: Uuid,
     pub name: String,
+    #[serde(rename = "type")]
     pub _type: HostType,
     pub docker_endpoint: String,
     pub status: HostStatus,
@@ -70,15 +71,15 @@ impl Into<CreateHostResponse> for domain::host::Host {
 
 #[derive(Deserialize, Debug)]
 pub struct GetAllHostRequest {
-    cursor: Option<Uuid>,
-    limit: Option<u16>,
-    q: Option<String>,
-    status: Option<HostStatus>,
+    pub cursor: Option<String>,
+    pub limit: Option<i16>,
+    pub q: Option<String>,
+    pub status: Option<HostStatus>,
 }
 
 #[derive(Serialize, Debug)]
 pub struct PaginationMetadataResponse {
-    pub next_cursor: Option<Uuid>,
+    pub next_cursor: Option<String>,
     pub has_more: bool,
 }
 

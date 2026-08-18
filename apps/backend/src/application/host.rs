@@ -2,10 +2,13 @@ use crate::http::error::HttpError;
 use crate::http::host::dto::{
     CreateHostRequest, CreateHostResponse, GetAllHostRequest, GetAllHostResponse,
     GetHostProjectsRequest, GetHostProjectsResponse, ObserveStatusResponse,
-    UpdateHostMetadataRequest, UpdateHostMetadataResponse,
+    PaginationMetadataResponse, UpdateHostMetadataRequest, UpdateHostMetadataResponse,
 };
-use crate::ports::host_repository::HostRepository;
+use crate::ports::host_repository::{HostPosition, HostRepository};
+use crate::ports::lib::PageRequest;
+use base64::{Engine, engine};
 use domain::host::Host;
+use engine::general_purpose;
 use sqlx::types::uuid;
 use std::sync::Arc;
 use validator::Validate;
@@ -33,13 +36,57 @@ impl HostService {
 
         self.host.insert(&host).await?;
 
-        // TODO: mekanisme buat ngecek
+        // TODO: mekanisme buat ngecek status host online atau offline
 
         Ok(host.into())
     }
 
-    pub async fn get_all(&self, req: &GetAllHostRequest) -> anyhow::Result<GetAllHostResponse> {
-        todo!()
+    pub async fn get_all(&self, req: GetAllHostRequest) -> anyhow::Result<GetAllHostResponse> {
+        let limit = req.limit.unwrap_or(10).clamp(1, i16::MAX);
+        let q = req.q.and_then(|q| (!q.trim().is_empty()).then(|| q.trim().to_owned()));
+        let status = req.status.map(|status| status.to_string());
+        let cursor = req.cursor.map(|cursor| {
+            let decoded = general_purpose::STANDARD.decode(cursor)?;
+            let position = serde_json::from_slice::<HostPosition>(&decoded)?;
+            Ok::<_, anyhow::Error>(position)
+        })
+            .transpose()?;
+
+        let mut hosts = self
+            .host
+            .get_all(PageRequest {
+                after: cursor,
+                limit: limit + 1,
+                q,
+                status,
+            })
+            .await?;
+
+        let has_more = hosts.len() > limit as usize;
+        if has_more {
+            hosts.pop();
+        }
+
+        let next_cursor = has_more
+            .then(|| hosts.last())
+            .flatten()
+            .map(|host| {
+                let position = HostPosition {
+                    id: host.id,
+                    created_at: host.created_at.and_utc(),
+                };
+                serde_json::to_vec(&position)
+                    .map(|value| general_purpose::STANDARD.encode(value))
+            })
+            .transpose()?;
+
+        Ok(GetAllHostResponse {
+            data: hosts.into_iter().map(Into::into).collect(),
+            meta: PaginationMetadataResponse {
+                next_cursor,
+                has_more,
+            },
+        })
     }
 
     pub async fn get_by_id(&self, host_id: &uuid::Uuid) -> anyhow::Result<CreateHostResponse> {

@@ -21,6 +21,17 @@ impl Display for HostStatus {
     }
 }
 
+impl Into<HostStatus> for String {
+    fn into(self) -> HostStatus {
+        match self.as_str() {
+            "online" => HostStatus::Online,
+            "offline" => HostStatus::Offline,
+            "unknown" => HostStatus::Unknown,
+            _ => panic!("invalid host status"),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
 #[serde(rename_all = "lowercase")]
 #[sqlx(type_name = "type", rename_all = "lowercase")]

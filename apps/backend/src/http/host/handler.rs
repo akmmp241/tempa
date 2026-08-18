@@ -27,8 +27,12 @@ pub async fn get_hosts(
     State(state): State<AppState>,
     Query(query): Query<GetAllHostRequest>,
 ) -> Result<Json<ApiResponse<GetAllHostResponse>>, HttpError> {
-    log::info!("hai");
-    todo!()
+    let res = state.host_service.get_all(query).await?;
+
+    Ok(Json(ApiResponse::success(
+        "Hosts fetched successfully".to_string(),
+        res,
+    )))
 }
 
 pub async fn get_host_by_id(

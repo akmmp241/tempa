@@ -1,11 +1,12 @@
-use crate::ports::host_repository::HostRepository;
+use crate::ports::host_repository::{HostPosition, HostRepository};
+use crate::ports::lib::PageRequest;
 use async_trait::async_trait;
-use domain::host::{Host, HostStatus, HostType};
+use domain::host::Host;
 use sqlx::types::{
     Uuid,
     chrono::{DateTime, Utc},
 };
-use sqlx::{AssertSqlSafe, FromRow, PgPool};
+use sqlx::{AssertSqlSafe, FromRow, PgPool, Postgres, QueryBuilder};
 
 pub struct PostgresHostRepository {
     pool: PgPool,
@@ -16,9 +17,9 @@ struct HostRow {
     id: Uuid,
     name: String,
     #[sqlx(rename = "type")]
-    host_type: HostType,
+    host_type: String,
     docker_endpoint: String,
-    status: HostStatus,
+    status: String,
     last_seen_at: Option<DateTime<Utc>>,
     created_at: DateTime<Utc>,
 }
@@ -28,9 +29,9 @@ impl HostRow {
         Host {
             id: self.id,
             name: self.name,
-            _type: self.host_type,
+            _type: self.host_type.into(),
             docker_endpoint: self.docker_endpoint,
-            status: self.status,
+            status: self.status.into(),
             last_seen_at: self.last_seen_at.map(|value| value.naive_utc()),
             created_at: self.created_at.naive_utc(),
         }
@@ -72,13 +73,42 @@ impl HostRepository for PostgresHostRepository {
         Ok(())
     }
 
-    async fn get_all(&self) -> anyhow::Result<Vec<Host>> {
-        let rows = sqlx::query_as::<_, HostRow>(
-            "SELECT id, name, type AS host_type, docker_endpoint, status, last_seen_at, created_at
-             FROM hosts",
-        )
+    async fn get_all(&self, query: PageRequest<HostPosition>) -> anyhow::Result<Vec<Host>> {
+        let mut builder = QueryBuilder::<Postgres>::new(
+            "SELECT id, name, type, docker_endpoint, status, last_seen_at, created_at FROM hosts",
+        );
+        let mut has_condition = false;
+
+        if let Some(position) = query.after {
+            builder.push(" WHERE id > ").push_bind(position.id);
+            has_condition = true;
+        }
+
+        if let Some(q) = query.q {
+            builder
+                .push(if has_condition { " AND" } else { " WHERE" })
+                .push(" name ILIKE ")
+                .push_bind(format!("%{q}%"));
+            has_condition = true;
+        }
+
+        if let Some(status) = query.status {
+            builder
+                .push(if has_condition { " AND" } else { " WHERE" })
+                .push(" status = ")
+                .push_bind(status);
+        }
+
+        let rows = builder
+            .push(" ORDER BY id ASC LIMIT ")
+            .push_bind(query.limit)
+            .build_query_as::<HostRow>()
             .fetch_all(&self.pool)
-            .await?;
+            .await
+            .map_err(|e| {
+                log::error!("error fetching hosts: {}", e);
+                e
+            })?;
 
         Ok(rows.into_iter().map(HostRow::into_host).collect())
     }

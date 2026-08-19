@@ -1,7 +1,7 @@
 use crate::http::error::HttpError;
 use crate::http::host::dto::{
     CreateHostRequest, CreateHostResponse, GetAllHostRequest, GetAllHostResponse,
-    GetHostProjectsRequest, GetHostProjectsResponse, ObserveStatusResponse,
+    GetHostProjectsRequest, GetHostProjectsResponse, HostResponse, ObserveStatusResponse,
     PaginationMetadataResponse, UpdateHostMetadataRequest, UpdateHostMetadataResponse,
 };
 use crate::ports::host_repository::{HostPosition, HostRepository};
@@ -43,22 +43,20 @@ impl HostService {
 
     pub async fn get_all(&self, req: GetAllHostRequest) -> Result<GetAllHostResponse, HttpError> {
         let limit = req.limit.unwrap_or(10).clamp(1, i16::MAX);
-        let q = req.q.and_then(|q| (!q.trim().is_empty()).then(|| q.trim().to_owned()));
+        let q = req
+            .q
+            .and_then(|q| (!q.trim().is_empty()).then(|| q.trim().to_owned()));
         let status = req.status.map(|status| status.to_string());
         let cursor = req
             .cursor
             .map(|cursor| {
                 let decoded = general_purpose::STANDARD.decode(cursor).map_err(|e| {
                     log::error!("failed occurred when decode base64 cursor:  {}", e);
-                    HttpError::BadRequest(
-                        "failed occurred when decode cursor".to_string(),
-                    )
+                    HttpError::BadRequest("failed occurred when decode cursor".to_string())
                 })?;
                 let position = serde_json::from_slice::<HostPosition>(&decoded).map_err(|e| {
                     log::error!("failed occurred when deserialize position: {}", e);
-                    HttpError::BadRequest(
-                        "failed occurred when deserialize position".to_string(),
-                    )
+                    HttpError::BadRequest("failed occurred when deserialize position".to_string())
                 })?;
                 Ok::<_, HttpError>(position)
             })
@@ -87,8 +85,7 @@ impl HostService {
                     id: host.id,
                     created_at: host.created_at.and_utc(),
                 };
-                serde_json::to_vec(&position)
-                    .map(|value| general_purpose::STANDARD.encode(value))
+                serde_json::to_vec(&position).map(|value| general_purpose::STANDARD.encode(value))
             })
             .transpose()
             .unwrap();
@@ -102,8 +99,14 @@ impl HostService {
         })
     }
 
-    pub async fn get_by_id(&self, host_id: &uuid::Uuid) -> anyhow::Result<CreateHostResponse> {
-        todo!()
+    pub async fn get_by_id(&self, host_id: uuid::Uuid) -> Result<HostResponse, HttpError> {
+        let host = self
+            .host
+            .get_by_id(&host_id.to_string())
+            .await?
+            .ok_or(HttpError::NotFound("host not found".to_string()))?;
+
+        Ok(host.into())
     }
 
     pub async fn update_metadata(

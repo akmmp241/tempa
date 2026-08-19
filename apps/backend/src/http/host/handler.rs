@@ -39,7 +39,12 @@ pub async fn get_host_by_id(
     State(state): State<AppState>,
     Path(host_id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<GetHostByIdResponse>>, HttpError> {
-    todo!()
+    let res = state.host_service.get_by_id(host_id).await?;
+
+    Ok(Json(ApiResponse::success(
+        "host fetched successfully".to_string(),
+        res,
+    )))
 }
 
 pub async fn update_host_metadata(

@@ -52,11 +52,9 @@ pub struct HostResponse {
     pub created_at: chrono::NaiveDateTime,
 }
 
-pub type CreateHostResponse = HostResponse;
-
-impl Into<CreateHostResponse> for domain::host::Host {
-    fn into(self) -> CreateHostResponse {
-        CreateHostResponse {
+impl Into<HostResponse> for domain::host::Host {
+    fn into(self) -> HostResponse {
+        HostResponse {
             id: self.id,
             name: self.name,
             _type: self._type,
@@ -68,6 +66,8 @@ impl Into<CreateHostResponse> for domain::host::Host {
         }
     }
 }
+
+pub type CreateHostResponse = HostResponse;
 
 #[derive(Deserialize, Debug)]
 pub struct GetAllHostRequest {

@@ -56,19 +56,19 @@ impl HostRepository for PostgresHostRepository {
             "INSERT INTO hosts (id, name, type, docker_endpoint, status, last_seen_at, created_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7)",
         )
-            .bind(&host.id)
-            .bind(&host.name)
-            .bind(&host._type.to_string())
-            .bind(&host.docker_endpoint)
-            .bind(&host.status.to_string())
-            .bind(last_seen_at)
-            .bind(created_at)
-            .execute(&self.pool)
-            .await
-            .map_err(|e| {
-                log::error!("error inserting host: {}", e);
-                e
-            })?;
+        .bind(&host.id)
+        .bind(&host.name)
+        .bind(&host._type.to_string())
+        .bind(&host.docker_endpoint)
+        .bind(&host.status.to_string())
+        .bind(last_seen_at)
+        .bind(created_at)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            log::error!("error inserting host: {}", e);
+            e
+        })?;
 
         Ok(())
     }
@@ -116,15 +116,15 @@ impl HostRepository for PostgresHostRepository {
     async fn get_by_id(&self, id: &str) -> anyhow::Result<Option<Host>> {
         let id = Uuid::parse_str(id)?;
         let row = sqlx::query_as::<_, HostRow>(
-            "SELECT id, name, type AS host_type, docker_endpoint, status, last_seen_at, created_at
+            "SELECT id, name, type, docker_endpoint, status, last_seen_at, created_at
              FROM hosts
              WHERE id = $1",
         )
-            .bind(id)
-            .fetch_one(&self.pool)
-            .await?;
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
 
-        Ok(Some(row.into_host()))
+        Ok(row.map(HostRow::into_host))
     }
 
     async fn get_by(&self, column: &str, value: &str) -> anyhow::Result<Option<Host>> {
@@ -172,14 +172,14 @@ impl HostRepository for PostgresHostRepository {
              SET name = $1, type = $2, docker_endpoint = $3, status = $4, last_seen_at = $5
              WHERE id = $6",
         )
-            .bind(host.name)
-            .bind(host._type)
-            .bind(host.docker_endpoint)
-            .bind(host.status)
-            .bind(last_seen_at)
-            .bind(host.id)
-            .execute(&self.pool)
-            .await?;
+        .bind(host.name)
+        .bind(host._type)
+        .bind(host.docker_endpoint)
+        .bind(host.status)
+        .bind(last_seen_at)
+        .bind(host.id)
+        .execute(&self.pool)
+        .await?;
 
         Ok(())
     }

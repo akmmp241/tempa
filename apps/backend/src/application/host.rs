@@ -41,15 +41,27 @@ impl HostService {
         Ok(host.into())
     }
 
-    pub async fn get_all(&self, req: GetAllHostRequest) -> anyhow::Result<GetAllHostResponse> {
+    pub async fn get_all(&self, req: GetAllHostRequest) -> Result<GetAllHostResponse, HttpError> {
         let limit = req.limit.unwrap_or(10).clamp(1, i16::MAX);
         let q = req.q.and_then(|q| (!q.trim().is_empty()).then(|| q.trim().to_owned()));
         let status = req.status.map(|status| status.to_string());
-        let cursor = req.cursor.map(|cursor| {
-            let decoded = general_purpose::STANDARD.decode(cursor)?;
-            let position = serde_json::from_slice::<HostPosition>(&decoded)?;
-            Ok::<_, anyhow::Error>(position)
-        })
+        let cursor = req
+            .cursor
+            .map(|cursor| {
+                let decoded = general_purpose::STANDARD.decode(cursor).map_err(|e| {
+                    log::error!("failed occurred when decode base64 cursor:  {}", e);
+                    HttpError::BadRequest(
+                        "failed occurred when decode cursor".to_string(),
+                    )
+                })?;
+                let position = serde_json::from_slice::<HostPosition>(&decoded).map_err(|e| {
+                    log::error!("failed occurred when deserialize position: {}", e);
+                    HttpError::BadRequest(
+                        "failed occurred when deserialize position".to_string(),
+                    )
+                })?;
+                Ok::<_, HttpError>(position)
+            })
             .transpose()?;
 
         let mut hosts = self
@@ -78,7 +90,8 @@ impl HostService {
                 serde_json::to_vec(&position)
                     .map(|value| general_purpose::STANDARD.encode(value))
             })
-            .transpose()?;
+            .transpose()
+            .unwrap();
 
         Ok(GetAllHostResponse {
             data: hosts.into_iter().map(Into::into).collect(),

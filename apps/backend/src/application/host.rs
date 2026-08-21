@@ -140,8 +140,16 @@ impl HostService {
         Ok(UpdateHostMetadataResponse { data: host.into() })
     }
 
-    pub async fn delete(&self, host_id: &uuid::Uuid) -> anyhow::Result<()> {
-        todo!()
+    pub async fn delete(&self, host_id: &uuid::Uuid) -> Result<(), HttpError> {
+        let host = self
+            .host
+            .get_by_id(&host_id.to_string())
+            .await?
+            .ok_or_else(|| HttpError::NotFound("host not found".to_string()))?;
+
+        self.host.delete(&host.id.to_string()).await?;
+
+        Ok(())
     }
 
     pub async fn status(&self, host_id: &uuid::Uuid) -> anyhow::Result<ObserveStatusResponse> {

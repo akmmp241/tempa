@@ -194,7 +194,11 @@ impl HostRepository for PostgresHostRepository {
         sqlx::query("DELETE FROM hosts WHERE id = $1")
             .bind(id)
             .execute(&self.pool)
-            .await?;
+            .await
+            .map_err(|e| {
+                log::error!("error deleting host: {}", e);
+                e
+            })?;
 
         Ok(())
     }

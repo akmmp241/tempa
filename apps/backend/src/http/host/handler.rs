@@ -9,6 +9,7 @@ use crate::http::host::dto::{
 };
 use axum::Json;
 use axum::extract::{Path, Query, State};
+use axum::response::IntoResponse;
 use http::StatusCode;
 use sqlx::types::Uuid;
 
@@ -67,10 +68,10 @@ pub async fn update_host_metadata(
 pub async fn delete_host(
     State(state): State<AppState>,
     Path(host_id): Path<Uuid>,
-) -> Result<(StatusCode), HttpError> {
-    todo!();
+) -> Result<impl IntoResponse, HttpError> {
+    state.host_service.delete(&host_id).await?;
 
-    Ok((StatusCode::NO_CONTENT))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn observe_host_status(

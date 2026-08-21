@@ -1,3 +1,4 @@
+use crate::http::project::dto::ProjectResponse;
 use domain::host::{HostStatus, HostType};
 use serde::{Deserialize, Serialize};
 use sqlx::types::{Uuid, chrono};
@@ -132,13 +133,12 @@ pub struct ObserveStatusResponse {
 
 #[derive(Deserialize, Debug)]
 pub struct GetHostProjectsRequest {
-    cursor: Option<Uuid>,
-    limit: Option<u16>,
+    pub cursor: Option<Uuid>,
+    pub limit: Option<u16>,
 }
 
 #[derive(Serialize, Debug)]
 pub struct GetHostProjectsResponse {
-    // TODO: change to ProjectResponse
-    pub data: Vec<Uuid>,
+    pub data: Vec<ProjectResponse>,
     pub meta: PaginationMetadataResponse,
 }

@@ -3,7 +3,9 @@ use crate::config;
 use crate::config::Config;
 use crate::http::route;
 use crate::infra::postgres::host_repository::PostgresHostRepository;
+use crate::infra::postgres::project_repository::PostgresProjectRepository;
 use crate::ports::host_repository::HostRepository;
+use crate::ports::project_repository::ProjectRepository;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -23,8 +25,10 @@ impl Bootstrap {
 
         let host_repository: Arc<dyn HostRepository> =
             Arc::new(PostgresHostRepository::new(db.clone()));
+        let project_repository: Arc<dyn ProjectRepository> =
+            Arc::new(PostgresProjectRepository::new(db.clone()));
 
-        let host_service = HostService::new(host_repository);
+        let host_service = HostService::new(host_repository, project_repository);
 
         let state = AppState {
             host_service: Arc::new(host_service),

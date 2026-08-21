@@ -6,9 +6,10 @@ use crate::http::host::dto::{
 };
 use crate::ports::host_repository::{HostPosition, HostRepository};
 use crate::ports::lib::PageRequest;
+use crate::ports::project_repository::ProjectRepository;
 use base64::{Engine, engine};
 use chrono::Utc;
-use domain::host::{self, Host};
+use domain::host::Host;
 use engine::general_purpose;
 use sqlx::types::uuid;
 use std::sync::Arc;
@@ -17,11 +18,12 @@ use validator::Validate;
 #[derive(Clone)]
 pub struct HostService {
     host: Arc<dyn HostRepository>,
+    project: Arc<dyn ProjectRepository>,
 }
 
 impl HostService {
-    pub fn new(host: Arc<dyn HostRepository>) -> Self {
-        Self { host }
+    pub fn new(host: Arc<dyn HostRepository>, project: Arc<dyn ProjectRepository>) -> Self {
+        Self { host, project }
     }
 
     pub async fn save(&self, req: CreateHostRequest) -> Result<CreateHostResponse, HttpError> {
@@ -178,7 +180,34 @@ impl HostService {
         &self,
         host_id: &uuid::Uuid,
         req: GetHostProjectsRequest,
-    ) -> anyhow::Result<GetHostProjectsResponse> {
-        todo!()
+    ) -> Result<GetHostProjectsResponse, HttpError> {
+        self.host
+            .get_by_id(&host_id.to_string())
+            .await?
+            .ok_or_else(|| HttpError::NotFound("host not found".to_string()))?;
+
+        let limit = req.limit.unwrap_or(10).clamp(1, i16::MAX);
+        let mut projects = self
+            .project
+            .get_by_host(host_id, req.cursor, (limit + 1) as i64)
+            .await?;
+
+        let has_more = projects.len() > limit as usize;
+        if has_more {
+            projects.pop();
+        }
+
+        let next_cursor = has_more
+            .then(|| projects.last())
+            .flatten()
+            .map(|project| project.id.to_string());
+
+        Ok(GetHostProjectsResponse {
+            data: projects.into_iter().map(Into::into).collect(),
+            meta: PaginationMetadataResponse {
+                next_cursor,
+                has_more,
+            },
+        })
     }
 }

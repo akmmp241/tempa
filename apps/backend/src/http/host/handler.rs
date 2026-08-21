@@ -91,5 +91,10 @@ pub async fn get_host_projects(
     Path(host_id): Path<Uuid>,
     Query(query): Query<GetHostProjectsRequest>,
 ) -> Result<Json<ApiResponse<GetHostProjectsResponse>>, HttpError> {
-    todo!()
+    let res = state.host_service.list_projects(&host_id, query).await?;
+
+    Ok(Json(ApiResponse::success(
+        "projects fetched successfully".to_string(),
+        res,
+    )))
 }

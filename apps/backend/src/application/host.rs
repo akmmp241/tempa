@@ -1,8 +1,9 @@
+use crate::http::dto::{PaginationMetadataResponse, PaginationResponse};
 use crate::http::error::HttpError;
 use crate::http::host::dto::{
     CreateHostRequest, CreateHostResponse, GetAllHostRequest, GetAllHostResponse,
     GetHostProjectsRequest, GetHostProjectsResponse, HostResponse, ObserveStatusResponse,
-    PaginationMetadataResponse, UpdateHostMetadataRequest, UpdateHostMetadataResponse,
+    UpdateHostMetadataRequest, UpdateHostMetadataResponse,
 };
 use crate::ports::host_repository::{HostPosition, HostRepository};
 use crate::ports::lib::PageRequest;
@@ -44,7 +45,10 @@ impl HostService {
         Ok(host.into())
     }
 
-    pub async fn get_all(&self, req: GetAllHostRequest) -> Result<GetAllHostResponse, HttpError> {
+    pub async fn get_all(
+        &self,
+        req: GetAllHostRequest,
+    ) -> Result<PaginationResponse<GetAllHostResponse>, HttpError> {
         let limit = req.limit.unwrap_or(10).clamp(1, i16::MAX);
         let q = req
             .q
@@ -93,13 +97,13 @@ impl HostService {
             .transpose()
             .unwrap();
 
-        Ok(GetAllHostResponse {
-            data: hosts.into_iter().map(Into::into).collect(),
-            meta: PaginationMetadataResponse {
+        Ok((
+            hosts.into_iter().map(Into::into).collect(),
+            PaginationMetadataResponse {
                 next_cursor,
                 has_more,
             },
-        })
+        ))
     }
 
     pub async fn get_by_id(&self, host_id: uuid::Uuid) -> Result<HostResponse, HttpError> {
@@ -180,7 +184,7 @@ impl HostService {
         &self,
         host_id: &uuid::Uuid,
         req: GetHostProjectsRequest,
-    ) -> Result<GetHostProjectsResponse, HttpError> {
+    ) -> Result<PaginationResponse<GetHostProjectsResponse>, HttpError> {
         self.host
             .get_by_id(&host_id.to_string())
             .await?
@@ -202,12 +206,12 @@ impl HostService {
             .flatten()
             .map(|project| project.id.to_string());
 
-        Ok(GetHostProjectsResponse {
-            data: projects.into_iter().map(Into::into).collect(),
-            meta: PaginationMetadataResponse {
+        Ok((
+            projects.into_iter().map(Into::into).collect(),
+            PaginationMetadataResponse {
                 next_cursor,
                 has_more,
             },
-        })
+        ))
     }
 }

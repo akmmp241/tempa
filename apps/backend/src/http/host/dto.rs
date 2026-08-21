@@ -78,17 +78,7 @@ pub struct GetAllHostRequest {
     pub status: Option<HostStatus>,
 }
 
-#[derive(Serialize, Debug)]
-pub struct PaginationMetadataResponse {
-    pub next_cursor: Option<String>,
-    pub has_more: bool,
-}
-
-#[derive(Serialize, Debug)]
-pub struct GetAllHostResponse {
-    pub data: Vec<HostResponse>,
-    pub meta: PaginationMetadataResponse,
-}
+pub type GetAllHostResponse = Vec<HostResponse>;
 
 pub type GetHostByIdResponse = CreateHostResponse;
 
@@ -134,11 +124,7 @@ pub struct ObserveStatusResponse {
 #[derive(Deserialize, Debug)]
 pub struct GetHostProjectsRequest {
     pub cursor: Option<Uuid>,
-    pub limit: Option<u16>,
+    pub limit: Option<i16>,
 }
 
-#[derive(Serialize, Debug)]
-pub struct GetHostProjectsResponse {
-    pub data: Vec<ProjectResponse>,
-    pub meta: PaginationMetadataResponse,
-}
+pub type GetHostProjectsResponse = Vec<ProjectResponse>;

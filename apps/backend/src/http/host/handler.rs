@@ -1,5 +1,5 @@
 use crate::bootstrap::AppState;
-use crate::http::dto::ApiResponse;
+use crate::http::dto::{ApiResponse, PaginationMetadataResponse};
 use crate::http::error::HttpError;
 use crate::http::extractors::ValidateJson;
 use crate::http::host::dto::{
@@ -28,12 +28,13 @@ pub async fn create_host(
 pub async fn get_hosts(
     State(state): State<AppState>,
     Query(query): Query<GetAllHostRequest>,
-) -> Result<Json<ApiResponse<GetAllHostResponse>>, HttpError> {
-    let res = state.host_service.get_all(query).await?;
+) -> Result<Json<ApiResponse<GetAllHostResponse, PaginationMetadataResponse>>, HttpError> {
+    let (res, meta) = state.host_service.get_all(query).await?;
 
-    Ok(Json(ApiResponse::success(
+    Ok(Json(ApiResponse::success_with_meta(
         "Hosts fetched successfully".to_string(),
         res,
+        meta,
     )))
 }
 
@@ -90,11 +91,12 @@ pub async fn get_host_projects(
     State(state): State<AppState>,
     Path(host_id): Path<Uuid>,
     Query(query): Query<GetHostProjectsRequest>,
-) -> Result<Json<ApiResponse<GetHostProjectsResponse>>, HttpError> {
-    let res = state.host_service.list_projects(&host_id, query).await?;
+) -> Result<Json<ApiResponse<GetHostProjectsResponse, PaginationMetadataResponse>>, HttpError> {
+    let (res, meta) = state.host_service.list_projects(&host_id, query).await?;
 
-    Ok(Json(ApiResponse::success(
+    Ok(Json(ApiResponse::success_with_meta(
         "projects fetched successfully".to_string(),
         res,
+        meta,
     )))
 }

@@ -121,7 +121,13 @@ pub struct HostObserveStatus {
 
 #[derive(Serialize, Debug)]
 pub struct ObserveStatusResponse {
-    pub data: HostObserveStatus,
+    pub host_id: Uuid,
+    pub status: HostStatus,
+    pub observed_at: chrono::NaiveDateTime,
+    pub docker_available: bool,
+    pub compose_available: bool,
+    pub docker_server_version: Option<String>,
+    pub compose_version: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]

@@ -7,7 +7,8 @@ use crate::http::host::dto::{
 use crate::ports::host_repository::{HostPosition, HostRepository};
 use crate::ports::lib::PageRequest;
 use base64::{Engine, engine};
-use domain::host::Host;
+use chrono::Utc;
+use domain::host::{self, Host};
 use engine::general_purpose;
 use sqlx::types::uuid;
 use std::sync::Arc;
@@ -152,8 +153,25 @@ impl HostService {
         Ok(())
     }
 
-    pub async fn status(&self, host_id: &uuid::Uuid) -> anyhow::Result<ObserveStatusResponse> {
-        todo!()
+    pub async fn status(&self, host_id: &uuid::Uuid) -> Result<ObserveStatusResponse, HttpError> {
+        let host = self
+            .host
+            .get_by_id(&host_id.to_string())
+            .await?
+            .ok_or_else(|| HttpError::NotFound("host not found".to_string()))?;
+
+        let status = ObserveStatusResponse {
+            host_id: host.id,
+            status: host.status,
+            observed_at: Utc::now().naive_utc(),
+            // TODO: implement cek status yang proper
+            docker_available: false,
+            compose_available: false,
+            docker_server_version: None,
+            compose_version: None,
+        };
+
+        Ok(status)
     }
 
     pub async fn list_projects(

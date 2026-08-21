@@ -78,7 +78,12 @@ pub async fn observe_host_status(
     State(state): State<AppState>,
     Path(host_id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<ObserveStatusResponse>>, HttpError> {
-    todo!()
+    let res = state.host_service.status(&host_id).await?;
+
+    Ok(Json(ApiResponse::success(
+        "fetched status successfully".to_string(),
+        res,
+    )))
 }
 
 pub async fn get_host_projects(

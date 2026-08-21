@@ -19,7 +19,7 @@ pub trait HostRepository: Send + Sync {
     ) -> anyhow::Result<Vec<domain::host::Host>>;
     async fn get_by_id(&self, id: &str) -> anyhow::Result<Option<domain::host::Host>>;
     async fn get_by(&self, column: &str, value: &str)
-                    -> anyhow::Result<Option<domain::host::Host>>;
-    async fn update(&self, host: domain::host::Host) -> anyhow::Result<()>;
+    -> anyhow::Result<Option<domain::host::Host>>;
+    async fn update(&self, host: &domain::host::Host) -> anyhow::Result<()>;
     async fn delete(&self, id: &str) -> anyhow::Result<()>;
 }

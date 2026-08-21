@@ -1,6 +1,7 @@
 use crate::bootstrap::AppState;
 use crate::http::dto::ApiResponse;
 use crate::http::error::HttpError;
+use crate::http::extractors::ValidateJson;
 use crate::http::host::dto::{
     CreateHostRequest, CreateHostResponse, GetAllHostRequest, GetAllHostResponse,
     GetHostByIdResponse, GetHostProjectsRequest, GetHostProjectsResponse, ObserveStatusResponse,
@@ -50,9 +51,17 @@ pub async fn get_host_by_id(
 pub async fn update_host_metadata(
     State(state): State<AppState>,
     Path(host_id): Path<Uuid>,
-    Json(payload): Json<UpdateHostMetadataRequest>,
+    ValidateJson(payload): ValidateJson<UpdateHostMetadataRequest>,
 ) -> Result<Json<ApiResponse<UpdateHostMetadataResponse>>, HttpError> {
-    todo!()
+    let res = state
+        .host_service
+        .update_metadata(&host_id, payload)
+        .await?;
+
+    Ok(Json(ApiResponse::success(
+        "host updated successfully".to_string(),
+        res,
+    )))
 }
 
 pub async fn delete_host(

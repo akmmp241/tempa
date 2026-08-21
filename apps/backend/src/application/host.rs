@@ -113,8 +113,31 @@ impl HostService {
         &self,
         host_id: &uuid::Uuid,
         req: UpdateHostMetadataRequest,
-    ) -> anyhow::Result<UpdateHostMetadataResponse> {
-        todo!()
+    ) -> Result<UpdateHostMetadataResponse, HttpError> {
+        let mut host = self
+            .host
+            .get_by_id(&host_id.to_string())
+            .await?
+            .ok_or_else(|| HttpError::NotFound("host not found".to_string()))?;
+
+        if let Some(name) = req.name {
+            host.name = name;
+        }
+
+        if let Some(host_type) = req._type {
+            host._type = host_type.into();
+        }
+
+        if let Some(docker_endpoint) = req.docker_endpoint {
+            host.docker_endpoint = docker_endpoint;
+        }
+
+        log::debug!("host: {:?}", host);
+        self.host.update(&host).await?;
+
+        // TODO: implement mekanisme cek status host
+
+        Ok(UpdateHostMetadataResponse { data: host.into() })
     }
 
     pub async fn delete(&self, host_id: &uuid::Uuid) -> anyhow::Result<()> {

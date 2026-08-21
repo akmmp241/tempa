@@ -162,7 +162,7 @@ impl HostRepository for PostgresHostRepository {
         Ok(Some(host))
     }
 
-    async fn update(&self, host: Host) -> anyhow::Result<()> {
+    async fn update(&self, host: &Host) -> anyhow::Result<()> {
         let last_seen_at = host
             .last_seen_at
             .map(|value| DateTime::<Utc>::from_naive_utc_and_offset(value, Utc));
@@ -172,14 +172,18 @@ impl HostRepository for PostgresHostRepository {
              SET name = $1, type = $2, docker_endpoint = $3, status = $4, last_seen_at = $5
              WHERE id = $6",
         )
-        .bind(host.name)
-        .bind(host._type)
-        .bind(host.docker_endpoint)
-        .bind(host.status)
-        .bind(last_seen_at)
-        .bind(host.id)
+        .bind(&host.name)
+        .bind(&host._type.to_string())
+        .bind(&host.docker_endpoint)
+        .bind(&host.status.to_string())
+        .bind(&last_seen_at)
+        .bind(&host.id)
         .execute(&self.pool)
-        .await?;
+        .await
+        .map_err(|e| {
+            log::error!("error updating host: {}", e);
+            e
+        })?;
 
         Ok(())
     }

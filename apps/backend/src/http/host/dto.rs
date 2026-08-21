@@ -94,9 +94,13 @@ pub type GetHostByIdResponse = CreateHostResponse;
 #[derive(Deserialize, Debug, Validate)]
 pub struct UpdateHostMetadataRequest {
     #[validate(length(min = 3, max = 255))]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     #[validate(length(min = 3, max = 255))]
-    pub slug: Option<String>,
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub _type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub docker_endpoint: Option<String>,
 }
 
 #[derive(Serialize, Debug)]

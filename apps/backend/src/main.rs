@@ -1,11 +1,5 @@
-pub mod application;
-pub mod bootstrap;
-pub mod config;
-pub mod http;
-pub mod infra;
-pub mod ports;
-
-use crate::bootstrap::Bootstrap;
+use backend::bootstrap::Bootstrap;
+use backend::config;
 use dotenvy::dotenv;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

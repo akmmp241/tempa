@@ -215,3 +215,6 @@ impl HostService {
         ))
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -3,8 +3,7 @@ info:
   title: Tempa API
   version: 0.2.0
   summary: Compose-first deployment control plane for a single Docker server.
-  description: "HTTP API contract for Tempa v2 MVP.\n\nProduct rules reflected by this contract:\n  - Docker Compose is the deployment contract.\n  - Tempa targets one Docker host for the MVP.\n  - PostgreSQL stores Tempa-managed configuration and deployment history.\n  - Docker Engine remains the source of truth for runtime state.\n  - Deployments are immutable execution records.\n  - Deployments for the same application execute sequentially.\n  - External Docker resources are referenced, not owned.\n  - Secret values are write-only and never returned as plaintext.\n  - Destructive operations must be explicit.\n\nFields or behaviors marked with `x-tempa-design: proposed` are API design\ndecisions that are useful for the MVP but are not explicitly fixed by the\nsource product document.\n\nHost model in v0.2:\n  - Host is first-class master data.\n  - Every Project belongs to exactly one Host via project.hostId.\n  - Application target Host is inherited from its Project.\n  - Every Deployment\
-    \ snapshots hostId for historical correctness.\n  - Docker networks, volumes, and runtime operations are host-scoped.\n  - Project.hostId is immutable through normal project PATCH in the MVP.\n"
+  description: "HTTP API contract for Tempa v2 MVP.\n\nProduct rules reflected by this contract:\n  - Docker Compose is the deployment contract.\n  - Tempa targets one Docker host for the MVP.\n  - PostgreSQL stores Tempa-managed configuration and deployment history.\n  - Docker Engine remains the source of truth for runtime state.\n  - Deployments are immutable execution records.\n  - Deployments for the same project execute sequentially.\n  - External Docker resources are referenced, not owned.\n  - Secret values are write-only and never returned as plaintext.\n  - Destructive operations must be explicit.\n\nFields or behaviors marked with `x-tempa-design: proposed` are API design\ndecisions that are useful for the MVP but are not explicitly fixed by the\nsource product document.\n\nStorage model after the project-centric migration:\n  - Host is first-class master data.\n  - Every Project belongs to exactly one Host via host_id.\n  - Compose revisions, deployments, environment variables, and runtime\n    resources are scoped directly by project_id.\n  - A Deployment references a project_id and revision_id; the current Host is\n    resolved through the Project relationship.\n"
 servers:
 - url: /
   description: Same-origin Tempa API
@@ -224,7 +223,7 @@ paths:
       - Networks
       operationId: listHostNetworks
       summary: List Docker networks on host
-      description: Read-only Docker network inventory for the selected Host. Resource ownership and identity are scoped by hostId.
+      description: Read-only Docker network inventory for the selected Host. Resource ownership and identity are scoped by host_id.
       parameters:
       - name: ownership
         in: query
@@ -257,7 +256,7 @@ paths:
       - Volumes
       operationId: listHostVolumes
       summary: List Docker volumes on host
-      description: Read-only Docker volume inventory for the selected Host. Resource ownership and identity are scoped by hostId.
+      description: Read-only Docker volume inventory for the selected Host. Resource ownership and identity are scoped by host_id.
       parameters:
       - name: ownership
         in: query
@@ -338,7 +337,7 @@ paths:
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/ValidationError'
-      description: Creates a Project assigned to exactly one Host. Project.hostId is the current deployment target inherited by all Applications under the Project.
+      description: Creates a Project assigned to exactly one Host. Project.host_id is the current deployment target for resources under the Project.
   /api/v1/projects/{projectId}:
     parameters:
     - $ref: '#/components/parameters/ProjectId'
@@ -383,7 +382,7 @@ paths:
           $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/ValidationError'
-      description: Updates Project metadata only. hostId cannot be changed here. Moving a Project between Hosts requires a future explicit migration workflow.
+      description: Updates Project metadata only. host_id cannot be changed here. Moving a Project between Hosts requires a future explicit migration workflow.
     delete:
       tags:
       - Projects
@@ -784,7 +783,7 @@ paths:
       - Deployments
       operationId: createDeployment
       summary: Queue deployment
-      description: "Creates an immutable Deployment record and enqueues it in PostgreSQL.\n\nThe worker then performs the lifecycle:\n  1. prepare deployment\n  2. fetch/update repository\n  3. resolve commit SHA\n  4. locate Compose file\n  5. generate deployment environment\n  6. validate Compose\n  7. pull/build images\n  8. docker compose up -d\n  9. verify service state/health\n  10. mark deployment succeeded or failed\n\nDeployments for the same application must execute sequentially.\n\nWhen a Deployment is queued, Tempa resolves Application -> Project -> Host and\nstores that Host id in Deployment.hostId as an immutable execution snapshot.\n"
+      description: "Creates an immutable Deployment record and enqueues it in PostgreSQL.\n\nThe worker then performs the lifecycle:\n  1. prepare deployment\n  2. fetch/update repository\n  3. resolve the Compose revision\n  4. generate deployment environment\n  5. validate Compose\n  6. pull/build images\n  7. docker compose up -d\n  8. verify service state/health\n  9. mark deployment succeeded or failed\n\nDeployments for the same project must execute sequentially. The stored\nDeployment references the project_id and revision_id defined by the migration.\n"
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       responses:
@@ -1337,40 +1336,59 @@ components:
       additionalProperties: false
       required:
       - id
-      - hostId
+      - host_id
       - name
+      - slug
       - description
-      - applicationCount
-      - createdAt
-      - updatedAt
+      - compose_project_name
+      - active_deployment_id
+      - application_count
+      - created_at
+      - updated_at
       properties:
         id:
           type: string
           format: uuid
+        host_id:
+          type: string
+          format: uuid
+          description: Current target Host for this Project.
         name:
           type: string
           minLength: 1
-          maxLength: 120
+          maxLength: 255
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 255
         description:
           type:
           - string
           - 'null'
           maxLength: 2000
           x-tempa-design: proposed
-        applicationCount:
+        compose_project_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Docker Compose project name used by this Project.
+        active_deployment_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+          description: Deployment currently recorded as active for this Project.
+        application_count:
           type: integer
           minimum: 0
+          description: Derived compatibility metadata; it is not stored in the projects table.
           x-tempa-design: proposed
-        createdAt:
+        created_at:
           type: string
           format: date-time
-        updatedAt:
+        updated_at:
           type: string
           format: date-time
-        hostId:
-          type: string
-          format: uuid
-          description: Current target Host inherited by all Applications in this Project.
     ProjectResponse:
       type: object
       additionalProperties: false
@@ -1396,20 +1414,30 @@ components:
       type: object
       additionalProperties: false
       required:
-      - hostId
+      - host_id
       - name
+      - slug
+      - compose_project_name
       properties:
         name:
           type: string
           minLength: 1
-          maxLength: 120
+          maxLength: 255
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 255
         description:
           type:
           - string
           - 'null'
           maxLength: 2000
           x-tempa-design: proposed
-        hostId:
+        compose_project_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        host_id:
           type: string
           format: uuid
     UpdateProjectRequest:
@@ -1420,14 +1448,22 @@ components:
         name:
           type: string
           minLength: 1
-          maxLength: 120
+          maxLength: 255
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 255
         description:
           type:
           - string
           - 'null'
           maxLength: 2000
           x-tempa-design: proposed
-      description: Updates mutable Project metadata only. hostId is intentionally absent. Moving a Project between Hosts requires an explicit future migration workflow.
+        compose_project_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+      description: Updates mutable Project metadata only. host_id is intentionally absent. Moving a Project between Hosts requires an explicit future migration workflow.
       x-tempa-design: proposed
     SourceConfig:
       type: object
@@ -1490,18 +1526,18 @@ components:
       additionalProperties: false
       required:
       - id
-      - projectId
+      - project_id
       - name
       - slug
       - source
-      - latestDeployment
-      - createdAt
-      - updatedAt
+      - latest_deployment
+      - created_at
+      - updated_at
       properties:
         id:
           type: string
           format: uuid
-        projectId:
+        project_id:
           type: string
           format: uuid
         name:
@@ -1515,17 +1551,17 @@ components:
           pattern: ^[a-z0-9]+(?:-[a-z0-9]+)*$
         source:
           $ref: '#/components/schemas/SourceConfig'
-        latestDeployment:
+        latest_deployment:
           oneOf:
           - $ref: '#/components/schemas/DeploymentSummary'
           - type: 'null'
-        createdAt:
+        created_at:
           type: string
           format: date-time
-        updatedAt:
+        updated_at:
           type: string
           format: date-time
-      description: Application belongs to a Project and does not duplicate hostId. Current Host is resolved through Application.projectId -> Project.hostId.
+      description: Higher-level API representation associated with a Project. The migrated storage tables use project_id directly and do not introduce a separate application foreign key.
     ApplicationResponse:
       type: object
       additionalProperties: false
@@ -1584,21 +1620,30 @@ components:
       type: object
       additionalProperties: false
       required:
+      - project_id
       - key
-      - secret
+      - is_secret
       - configured
-      - updatedAt
+      - created_at
+      - updated_at
       properties:
+        project_id:
+          type: string
+          format: uuid
         key:
           type: string
           pattern: ^[A-Za-z_][A-Za-z0-9_]*$
           maxLength: 255
-        secret:
+        is_secret:
           type: boolean
         configured:
           type: boolean
           const: true
-        updatedAt:
+          description: Derived metadata indicating that an encrypted value is configured.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
           type: string
           format: date-time
     PutEnvironmentVariableRequest:
@@ -1611,7 +1656,7 @@ components:
           type: string
           maxLength: 65535
           writeOnly: true
-        secret:
+        is_secret:
           type: boolean
           default: true
     EnvironmentVariableResponse:
@@ -1632,6 +1677,73 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/EnvironmentVariable'
+    ComposeRevision:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - project_id
+      - revision_number
+      - raw_content
+      - normalized_content
+      - content_checksum
+      - validation_status
+      - validation_error
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        revision_number:
+          type: integer
+          format: int64
+          minimum: 1
+        raw_content:
+          type: string
+        normalized_content:
+          type:
+          - string
+          - 'null'
+        content_checksum:
+          type: string
+          minLength: 1
+        validation_status:
+          type: string
+          enum:
+          - pending
+          - valid
+          - invalid
+        validation_error:
+          type:
+          - string
+          - 'null'
+        created_at:
+          type: string
+          format: date-time
+    ComposeRevisionResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/ComposeRevision'
+    ComposeRevisionListResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - data
+      - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComposeRevision'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
     ComposeDiscovery:
       type: object
       additionalProperties: false
@@ -1903,89 +2015,105 @@ components:
       additionalProperties: false
       required:
       - id
-      - hostId
+      - project_id
+      - revision_id
       - status
-      - commitSha
-      - createdAt
-      - finishedAt
+      - trigger_type
+      - requested_at
+      - started_at
+      - finished_at
       properties:
         id:
           type: string
           format: uuid
-        status:
-          $ref: '#/components/schemas/DeploymentStatus'
-        commitSha:
-          type:
-          - string
-          - 'null'
-        createdAt:
-          type: string
-          format: date-time
-        finishedAt:
-          type:
-          - string
-          - 'null'
-          format: date-time
-        hostId:
+        project_id:
           type: string
           format: uuid
+        revision_id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/DeploymentStatus'
+        trigger_type:
+          type: string
+          enum:
+          - manual
+          - rollback
+          - redeploy
+        requested_at:
+          type: string
+          format: date-time
+        started_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        finished_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
     Deployment:
       type: object
       additionalProperties: false
       required:
       - id
-      - applicationId
-      - hostId
-      - branch
-      - commitSha
-      - trigger
+      - project_id
+      - revision_id
       - status
-      - errorSummary
-      - createdAt
-      - startedAt
-      - finishedAt
+      - trigger_type
+      - requested_at
+      - started_at
+      - finished_at
+      - failure_code
+      - failure_message
+      - previous_deployment_id
       properties:
         id:
           type: string
           format: uuid
-        applicationId:
+        project_id:
           type: string
           format: uuid
-        branch:
+        revision_id:
           type: string
-        commitSha:
+          format: uuid
+        status:
+          $ref: '#/components/schemas/DeploymentStatus'
+        trigger_type:
+          type: string
+          enum:
+          - manual
+          - rollback
+          - redeploy
+        requested_at:
+          type: string
+          format: date-time
+        started_at:
           type:
           - string
           - 'null'
-        trigger:
-          type: string
-          description: Stored deployment trigger. Kept open because the source does not define a closed enum.
-          examples:
-          - api
-        status:
-          $ref: '#/components/schemas/DeploymentStatus'
-        errorSummary:
+          format: date-time
+        finished_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        failure_code:
+          type:
+          - string
+          - 'null'
+        failure_message:
           type:
           - string
           - 'null'
           maxLength: 8000
-        createdAt:
-          type: string
-          format: date-time
-        startedAt:
+        previous_deployment_id:
           type:
           - string
           - 'null'
-          format: date-time
-        finishedAt:
-          type:
-          - string
-          - 'null'
-          format: date-time
-        hostId:
-          type: string
           format: uuid
-          description: Immutable Host snapshot captured when this Deployment is queued.
+          description: Previous deployment in the same Project, when applicable.
     DeploymentResponse:
       type: object
       additionalProperties: false
@@ -2011,37 +2139,43 @@ components:
       type: object
       additionalProperties: false
       required:
-      - cursor
-      - timestamp
-      - stream
+      - id
+      - deployment_id
+      - sequence_number
+      - event_type
+      - level
       - message
+      - metadata
+      - created_at
       properties:
-        cursor:
+        id:
+          type: integer
+          format: int64
+        deployment_id:
           type: string
-        timestamp:
+          format: uuid
+        sequence_number:
+          type: integer
+          format: int64
+        event_type:
           type: string
-          format: date-time
-        stream:
-          type: string
-          examples:
-          - system
-          - git
-          - build
-          - compose
-          - verify
         level:
-          type:
-          - string
-          - 'null'
+          type: string
           enum:
-          - trace
           - debug
           - info
           - warn
           - error
-          - null
         message:
           type: string
+        metadata:
+          type:
+          - object
+          - 'null'
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
     DeploymentLogMeta:
       type: object
       additionalProperties: false
@@ -2071,6 +2205,57 @@ components:
             $ref: '#/components/schemas/DeploymentLogEntry'
         meta:
           $ref: '#/components/schemas/DeploymentLogMeta'
+    RuntimeResource:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - project_id
+      - deployment_id
+      - resource_type
+      - docker_resource_id
+      - name
+      - status
+      - metadata
+      - discovered_at
+      - last_seen_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        deployment_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        resource_type:
+          type: string
+          enum:
+          - container
+          - image
+          - volume
+          - network
+        docker_resource_id:
+          type: string
+        name:
+          type: string
+          maxLength: 255
+        status:
+          type:
+          - string
+          - 'null'
+        metadata:
+          type: object
+          additionalProperties: true
+        discovered_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
     ResourceOwnership:
       type: string
       enum:
@@ -2081,6 +2266,7 @@ components:
       type: object
       additionalProperties: false
       required:
+      - project_id
       - hostId
       - observedAt
       - composeProject
@@ -2088,6 +2274,9 @@ components:
       - services
       - drift
       properties:
+        project_id:
+          type: string
+          format: uuid
         observedAt:
           type: string
           format: date-time
@@ -2108,6 +2297,11 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/RuntimeService'
+        resources:
+          type: array
+          description: Persisted runtime resource records scoped by project_id.
+          items:
+            $ref: '#/components/schemas/RuntimeResource'
         drift:
           $ref: '#/components/schemas/RuntimeDrift'
         hostId:
@@ -2402,9 +2596,12 @@ components:
       required:
       - hostId
       - id
+      - docker_network_id
       - name
       - driver
       - scope
+      - is_external
+      - last_seen_at
       - internal
       - attachable
       - ownership
@@ -2412,12 +2609,23 @@ components:
       properties:
         id:
           type: string
+          format: uuid
+        docker_network_id:
+          type: string
         name:
           type: string
+          maxLength: 255
         driver:
           type: string
         scope:
+          type:
+          - string
+          - 'null'
+        is_external:
+          type: boolean
+        last_seen_at:
           type: string
+          format: date-time
         internal:
           type: boolean
         attachable:
@@ -2483,8 +2691,8 @@ components:
       type: string
       enum:
       - local
-      description: MVP connection type. Remote host transports are intentionally deferred.
-      x-tempa-design: proposed
+      - remote
+      description: Connection type accepted by the hosts migration.
     HostStatus:
       type: string
       enum:
@@ -2498,43 +2706,39 @@ components:
       required:
       - id
       - name
-      - slug
-      - connectionType
+      - type
+      - docker_endpoint
       - status
-      - lastSeenAt
-      - projectCount
-      - createdAt
-      - updatedAt
+      - project_count
+      - last_seen_at
+      - created_at
       properties:
         id:
           type: string
           format: uuid
         name:
           type: string
-          minLength: 1
-          maxLength: 120
-        slug:
+          minLength: 3
+          maxLength: 255
+        type:
+          $ref: '#/components/schemas/HostConnectionType'
+        docker_endpoint:
           type: string
           minLength: 1
           maxLength: 100
-          pattern: ^[a-z0-9]+(?:-[a-z0-9]+)*$
-        connectionType:
-          $ref: '#/components/schemas/HostConnectionType'
         status:
           $ref: '#/components/schemas/HostStatus'
-        lastSeenAt:
+        last_seen_at:
           type:
           - string
           - 'null'
           format: date-time
-        projectCount:
+        project_count:
           type: integer
           minimum: 0
+          description: Derived project count metadata; not a column in the hosts table.
           x-tempa-design: proposed
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
+        created_at:
           type: string
           format: date-time
     HostResponse:
@@ -2563,19 +2767,19 @@ components:
       additionalProperties: false
       required:
       - name
-      - slug
+      - type
+      - docker_endpoint
       properties:
         name:
           type: string
-          minLength: 1
-          maxLength: 120
-        slug:
+          minLength: 3
+          maxLength: 255
+        type:
+          $ref: '#/components/schemas/HostConnectionType'
+        docker_endpoint:
           type: string
           minLength: 1
           maxLength: 100
-          pattern: ^[a-z0-9]+(?:-[a-z0-9]+)*$
-        connectionType:
-          $ref: '#/components/schemas/HostConnectionType'
     UpdateHostRequest:
       type: object
       additionalProperties: false
@@ -2583,42 +2787,43 @@ components:
       properties:
         name:
           type: string
-          minLength: 1
-          maxLength: 120
-        slug:
+          minLength: 3
+          maxLength: 255
+        type:
+          $ref: '#/components/schemas/HostConnectionType'
+        docker_endpoint:
           type: string
           minLength: 1
           maxLength: 100
-          pattern: ^[a-z0-9]+(?:-[a-z0-9]+)*$
     HostStatusDetail:
       type: object
       additionalProperties: false
       required:
-      - hostId
+      - host_id
       - status
-      - observedAt
-      - dockerAvailable
-      - composeAvailable
-      - dockerServerVersion
-      - composeVersion
+      - observed_at
+      - docker_available
+      - compose_available
+      - docker_server_version
+      - compose_version
       properties:
-        hostId:
+        host_id:
           type: string
           format: uuid
         status:
           $ref: '#/components/schemas/HostStatus'
-        observedAt:
+        observed_at:
           type: string
           format: date-time
-        dockerAvailable:
+        docker_available:
           type: boolean
-        composeAvailable:
+        compose_available:
           type: boolean
-        dockerServerVersion:
+        docker_server_version:
           type:
           - string
           - 'null'
-        composeVersion:
+        compose_version:
           type:
           - string
           - 'null'

@@ -15,14 +15,17 @@ use sqlx::types::Uuid;
 
 pub async fn create_host(
     State(state): State<AppState>,
-    Json(payload): Json<CreateHostRequest>,
-) -> Result<Json<ApiResponse<CreateHostResponse>>, HttpError> {
+    ValidateJson(payload): ValidateJson<CreateHostRequest>,
+) -> Result<(StatusCode, Json<ApiResponse<CreateHostResponse>>), HttpError> {
     let res = state.host_service.save(payload).await?;
 
-    Ok(Json(ApiResponse::success(
-        "Host created successfully".to_string(),
-        res,
-    )))
+    Ok((
+        StatusCode::CREATED,
+        Json(ApiResponse::success(
+            "Host created successfully".to_string(),
+            res,
+        )),
+    ))
 }
 
 pub async fn get_hosts(

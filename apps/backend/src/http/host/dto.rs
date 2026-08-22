@@ -87,7 +87,10 @@ pub struct UpdateHostMetadataRequest {
     #[validate(length(min = 3, max = 255))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    #[validate(length(min = 3, max = 255))]
+    #[validate(
+        length(max = 20),
+        custom(function = "validate_host_type", message = "invalid host type")
+    )]
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub _type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

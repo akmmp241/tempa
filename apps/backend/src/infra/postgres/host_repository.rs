@@ -136,7 +136,7 @@ impl HostRepository for PostgresHostRepository {
         };
 
         let query = format!(
-            "SELECT id, name, type AS host_type, docker_endpoint, status, last_seen_at, created_at
+            "SELECT id, name, type, docker_endpoint, status, last_seen_at, created_at
             FROM hosts
             WHERE {} = $1",
             column

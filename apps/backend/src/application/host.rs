@@ -32,11 +32,9 @@ impl HostService {
 
         let host = Host::from(req);
 
-        self.host
-            .get_by("name", &host.id.to_string())
-            .await?
-            .is_some()
-            .then(|| HttpError::BadRequest("duplicate name".to_string()));
+        if self.host.get_by("name", &host.name).await?.is_some() {
+            return Err(HttpError::BadRequest("duplicate name".to_string()));
+        }
 
         self.host.insert(&host).await?;
 
@@ -121,6 +119,8 @@ impl HostService {
         host_id: &uuid::Uuid,
         req: UpdateHostMetadataRequest,
     ) -> Result<UpdateHostMetadataResponse, HttpError> {
+        req.validate()?;
+
         let mut host = self
             .host
             .get_by_id(&host_id.to_string())

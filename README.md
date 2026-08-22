@@ -662,6 +662,24 @@ Tempa mengambil inspirasi dari kemudahan pengelolaan container dan deployment wo
 
 ## Contributing
 
+### Testing
+
+Unit test dapat dijalankan tanpa service eksternal:
+
+```bash
+cargo test -p backend --lib
+```
+
+Integration test membutuhkan PostgreSQL dari Docker Compose dan database khusus testing. Setelah `.env` berisi `DATABASE_URL` yang sesuai, jalankan:
+
+```bash
+docker compose up -d db
+set -a && source .env && set +a
+cargo test --workspace -- --test-threads=1
+```
+
+`DATABASE_URL_TEST` dapat digunakan untuk mengarahkan integration test ke database terpisah; variabel ini diprioritaskan daripada `DATABASE_URL`.
+
 Tempa saat ini merupakan personal learning project dan masih berada pada fase eksplorasi.
 
 Panduan kontribusi akan ditambahkan ketika struktur project dan workflow pengembangan sudah cukup stabil.
